@@ -1,0 +1,61 @@
+# QKD Explainable Anomaly Detection Configuration
+# Protocol: BB84 with Decoy/Discrete Block Sifting & Noise Modeling
+
+simulation:
+  random_seed: 42
+  raw_photons_per_block: 1024       # M: Number of raw transmitted photon states per block
+  expected_sifted_bits: 512         # N approx M/2 after basis reconciliation
+  blocks_per_session: 200           # B: Total sequential transmission blocks per session
+  attack_start_block: 101           # T_attack: Block index where Eve becomes active (1-indexed)
+  
+physics:
+  baseline_qber: 0.03               # e_0: Stationary fiber background noise (3%)
+  abort_qber_threshold: 0.11        # Static 11% BB84 theoretical threshold
+  scintillation_std: 0.008          # Log-normal noise standard deviation for free-space
+  scintillation_ar1_phi: 0.75       # Temporal correlation parameter for atmospheric turbulence
+  
+classes:
+  class_0_benign:
+    name: "Benign Noise"
+    p_eve: 0.0
+  class_1_full_ir:
+    name: "Full Intercept-Resend"
+    p_eve: 1.0
+  class_2_fractional_ir:
+    name: "Fractional Intercept-Resend"
+    p_eve_min: 0.10
+    p_eve_max: 0.30
+
+features:
+  window_size: 10                   # W: Backward-looking causal sliding window (blocks)
+  ema_span: 5                       # Span for exponential moving average
+
+models:
+  hoeffding:
+    alpha: 0.01                     # Confidence significance (target FPR <= 1%)
+  random_forest:
+    n_estimators: 150
+    max_depth: 8
+    random_state: 42
+    n_jobs: -1
+  xgboost:
+    n_estimators: 150
+    max_depth: 5
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+    eval_metric: "logloss"
+
+benchmarks:
+  num_sessions_train: 1200          # 400 per class for training
+  num_sessions_val: 300             # 100 per class for validation & threshold tuning
+  num_sessions_test: 600            # 200 per class for testing
+  latency_eval_sessions: 500        # Dedicated sessions for empirical latency Delta_T evaluation
+  latency_p_eve_grid: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 1.0]
+
+paths:
+  raw_data: "data/raw"
+  processed_data: "data/processed"
+  figures: "results/figures"
+  metrics: "results/metrics"
