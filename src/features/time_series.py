@@ -136,9 +136,102 @@ class CausalTimeSeriesExtractor:
         attack_start_block: int = 101,
     ) -> pd.DataFrame:
         """Causally extracts feature rows from an entire chronological session.
-        
+
         Returns a DataFrame where each row corresponds to block timestep t (for t >= W).
+        Vectorized over all windows; numerically equivalent to calling
+        extract_single_window() on each window (see extract_from_session_reference).
         """
+        qbers = np.asarray(qbers, dtype=np.float64)
+        num_blocks = len(qbers)
+        w = self.window_size
+        if num_blocks < w:
+            return pd.DataFrame()
+
+        # Causal recursive EMA (inherently sequential, but only O(B))
+        ema = np.empty(num_blocks, dtype=np.float64)
+        ema[0] = qbers[0]
+        for i in range(1, num_blocks):
+            ema[i] = self.alpha_ema * qbers[i] + (1.0 - self.alpha_ema) * ema[i - 1]
+
+        # Row r holds window [e_{t-W+1}, ..., e_t] for t = r + W (1-indexed)
+        win = np.lib.stride_tricks.sliding_window_view(qbers, w)
+        end_idx = np.arange(w - 1, num_blocks)
+        e_t = win[:, -1]
+
+        mean_val = win.mean(axis=1)
+        std_val = win.std(axis=1, ddof=1) if w > 1 else np.zeros(len(win))
+        var_val = std_val ** 2
+        fano = var_val / (mean_val + 1e-9)
+
+        x_centered = np.arange(w, dtype=np.float64) - (w - 1) / 2.0
+        slope = (win @ x_centered) / (np.dot(x_centered, x_centered) + 1e-12)
+
+        ema_div = e_t - ema[end_idx]
+
+        has_spread = std_val > 1e-8
+        if w >= 4:
+            with np.errstate(all="ignore"):
+                skew_val = np.where(has_spread, stats.skew(win, axis=1, bias=False), 0.0)
+                kurt_val = np.where(has_spread, stats.kurtosis(win, axis=1, bias=False), 0.0)
+        else:
+            skew_val = np.zeros(len(win))
+            kurt_val = np.zeros(len(win))
+
+        # Shannon entropy over 5 bins in [0, 0.35], same edges/semantics as np.histogram
+        edges = np.linspace(0.0, 0.35, 6)
+        bin_idx = np.searchsorted(edges, win, side="right") - 1
+        bin_idx[win == edges[-1]] = 4          # right edge is inclusive
+        in_range = (win >= edges[0]) & (win <= edges[-1])
+        counts = np.stack([np.sum((bin_idx == k) & in_range, axis=1) for k in range(5)], axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            probs = counts / counts.sum(axis=1, keepdims=True)
+            plogp = np.where(probs > 0, probs * np.log2(np.where(probs > 0, probs, 1.0)), 0.0)
+        entropy_val = -plogp.sum(axis=1)
+
+        sum_ms = std_val + mean_val
+        with np.errstate(divide="ignore", invalid="ignore"):
+            burstiness = np.where(sum_ms > 1e-8, (std_val - mean_val) / sum_ms, 0.0)
+        burstiness = np.clip(burstiness, -1.0, 1.0)
+
+        centered = win - mean_val[:, None]
+        denom = np.sum(centered ** 2, axis=1)
+        num = np.sum(centered[:, :-1] * centered[:, 1:], axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            lag1 = np.where(has_spread & (w > 2) & (denom > 1e-12), num / denom, 0.0)
+
+        qber_range = win.max(axis=1) - win.min(axis=1)
+        sifted = np.asarray(sifted_lens, dtype=np.float64)[end_idx]
+
+        t_index = end_idx + 1
+        block_cls = np.asarray(block_classes)[end_idx].astype(int)
+        df = pd.DataFrame({
+            "session_id": session_id,
+            "block_index": t_index,
+            "channel_type": channel_type,
+            "session_attack_class": attack_class,
+            "session_p_eve": p_eve,
+            "attack_start_block": attack_start_block,
+            "is_attack_active": ((t_index >= attack_start_block) & (attack_class > 0)).astype(int),
+            "block_class": block_cls,
+        })
+        feat_cols = [e_t, mean_val, std_val, var_val, fano, slope, ema_div, skew_val,
+                     kurt_val, entropy_val, burstiness, lag1, qber_range, sifted]
+        for f_name, col in zip(self.feature_names, feat_cols):
+            df[f_name] = np.asarray(col, dtype=np.float64)
+        return df
+
+    def extract_from_session_reference(
+        self,
+        session_id: int,
+        qbers: np.ndarray,
+        sifted_lens: np.ndarray,
+        block_classes: np.ndarray,
+        attack_class: int,
+        channel_type: str,
+        p_eve: float,
+        attack_start_block: int = 101,
+    ) -> pd.DataFrame:
+        """Original per-window loop implementation, kept as a correctness oracle for tests."""
         num_blocks = len(qbers)
         records = []
         

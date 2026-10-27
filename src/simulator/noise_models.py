@@ -53,7 +53,7 @@ class FreeSpaceNoiseModel:
     def __init__(
         self,
         base_qber: float = 0.03,
-        scintillation_std: float = 0.008,
+        scintillation_std: float = 0.30,
         ar1_phi: float = 0.75,
         min_qber: float = 0.005,
         max_qber: float = 0.15,

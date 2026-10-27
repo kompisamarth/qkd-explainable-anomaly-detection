@@ -13,6 +13,7 @@ import json
 import yaml
 import numpy as np
 import pandas as pd
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
@@ -150,14 +151,50 @@ def main():
     with open(metrics_dir / "classification_benchmarks_fiber.json", "w") as f:
         json.dump(fiber_results, f, indent=2)
 
+    # Full IR (Class 1) blocks are trivially separable and make up half of the attack
+    # blocks, so also report the harder benign-vs-stealthy (Class 0 vs Class 2) subset.
+    print("\n  Stealth subset (benign blocks vs. active fractional-IR blocks only):")
+    stealth_mask = test_fiber_df["block_class"].isin([0, 2]).values
+    stealth_df = test_fiber_df[stealth_mask]
+    y_stealth = stealth_df["is_attack_active"].values
+    stealth_results = []
+    for name, det in detectors.items():
+        preds = det.predict(stealth_df)
+        scores = det.predict_proba(stealth_df)[:, 1]
+        m = evaluate_classification_metrics(y_stealth, preds, scores)
+        m["model"] = name
+        stealth_results.append(m)
+        print(f"  {name:30s} | Recall: {m['recall']:.4f} | F1: {m['f1_score']:.4f} | FPR: {m['false_positive_rate']:.4f} | AUROC: {m['auroc']:.4f}")
+    pd.DataFrame(stealth_results).to_csv(metrics_dir / "stealth_subset_benchmarks_fiber.csv", index=False)
+
+    # Multi-class models (Benign / Full IR / Fractional IR) on fiber and free-space
+    print("\n  Multi-class evaluation (per-block class 0/1/2):")
+    multi_rows = []
+    for name, det in {"Random Forest": rf_multi, "XGBoost": xgb_multi}.items():
+        for ch_name, df_eval in {"fiber": test_fiber_df, "free_space": test_fso_df}.items():
+            y_true = df_eval["block_class"].values
+            y_pred = det.predict(df_eval)
+            per_class_f1 = f1_score(y_true, y_pred, labels=[0, 1, 2], average=None, zero_division=0)
+            row = {
+                "model": name,
+                "channel": ch_name,
+                "accuracy": float(accuracy_score(y_true, y_pred)),
+                "macro_f1": float(f1_score(y_true, y_pred, average="macro")),
+                "f1_benign": float(per_class_f1[0]),
+                "f1_full_ir": float(per_class_f1[1]),
+                "f1_fractional_ir": float(per_class_f1[2]),
+            }
+            cm = confusion_matrix(y_true, y_pred, labels=[0, 1, 2])
+            for i in range(3):
+                for j in range(3):
+                    row[f"cm_{i}{j}"] = int(cm[i, j])
+            multi_rows.append(row)
+            print(f"  {name:14s} {ch_name:10s} | Acc: {row['accuracy']:.4f} | Macro-F1: {row['macro_f1']:.4f} | F1 frac-IR: {row['f1_fractional_ir']:.4f}")
+    pd.DataFrame(multi_rows).to_csv(metrics_dir / "multiclass_benchmarks.csv", index=False)
+
     # 4. Operational Detection Latency Benchmarks
     print("\n[4/5] Evaluating Operational Detection Latency Delta_T across p_eve grid...")
     p_eve_grid = cfg["benchmarks"]["latency_p_eve_grid"]
-    sim = BB84Simulator(
-        raw_photons_per_block=cfg["simulation"]["raw_photons_per_block"],
-        base_qber=cfg["physics"]["baseline_qber"],
-        random_state=cfg["simulation"]["random_seed"],
-    )
     extractor = CausalTimeSeriesExtractor(
         window_size=cfg["features"]["window_size"],
         ema_span=cfg["features"]["ema_span"],
@@ -174,6 +211,12 @@ def main():
 
     for m_label, det_obj in eval_models.items():
         print(f"  Measuring latency for: {m_label}...")
+        # Fresh, identically seeded simulator so every detector sees the same sessions
+        sim = BB84Simulator(
+            raw_photons_per_block=cfg["simulation"]["raw_photons_per_block"],
+            base_qber=cfg["physics"]["baseline_qber"],
+            random_state=cfg["simulation"]["random_seed"],
+        )
         df_lat = evaluate_detection_latency(
             sim=sim,
             extractor=extractor,

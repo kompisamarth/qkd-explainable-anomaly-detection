@@ -62,8 +62,8 @@ def run_physics_checks():
     # TEST 3: Fractional / Stealthy IR Attack with Natural Fiber Noise
     # ---------------------------------------------------------
     print("\n[TEST 3] Fractional Stealthy IR Attack (e_0 = 0.03, p_eve = 0.20)")
-    fiber_3 = FiberNoiseModel(base_qber=0.03, random_state=42)
-    frac_eve = EveAttacker(class_id=2, p_eve=0.20, random_state=42)
+    fiber_3 = FiberNoiseModel(base_qber=0.03, random_state=4242)  # distinct seed: shared seeds correlate noise with interception
+    frac_eve = EveAttacker(class_id=2, p_eve=0.20, random_state=4343)
     
     # Run multiple blocks to obtain high statistical precision
     qbers = []
@@ -87,7 +87,7 @@ def run_physics_checks():
     # TEST 4: Non-Stationary Free-Space Atmospheric Scintillation
     # ---------------------------------------------------------
     print("\n[TEST 4] Non-Stationary Free-Space Atmospheric Scintillation Channel")
-    fso = FreeSpaceNoiseModel(base_qber=0.03, scintillation_std=0.008, ar1_phi=0.75, random_state=42)
+    fso = FreeSpaceNoiseModel(base_qber=0.03, scintillation_std=0.30, ar1_phi=0.75, random_state=42)
     fso_qbers = [fso.get_block_qber(b) for b in range(100)]
     
     fso_mean = float(np.mean(fso_qbers))
@@ -98,8 +98,13 @@ def run_physics_checks():
     print(f"  FSO Sequence Mean QBER:   {fso_mean:.4f} (Nominal: 0.0300)")
     print(f"  FSO Sequence QBER Std:    {fso_std:.4f}")
     print(f"  Empirical Lag-1 Autocorr: {lag1_corr:.4f} (Target phi: ~0.75)")
+    # Detectors average W=10 blocks, which suppresses independent binomial noise by sqrt(W)
+    # but not the correlated drift, so the drift must exceed the windowed binomial noise.
+    binom_std_window = float(np.sqrt(0.03 * 0.97 / (512 * 10)))
+    print(f"  Binomial std of a W=10 window mean: {binom_std_window:.4f}")
     assert abs(fso_mean - 0.03) < 0.005, "FSO mean drifted excessively from baseline"
     assert lag1_corr > 0.50, f"Lag-1 autocorrelation {lag1_corr} is too weak for atmospheric memory"
+    assert fso_std > binom_std_window, "Scintillation drift is below windowed finite-block noise, so it is not observable"
     print("  -> PASSED: Realistic temporal correlation and turbulence verified.")
 
     # ---------------------------------------------------------
@@ -107,14 +112,17 @@ def run_physics_checks():
     # ---------------------------------------------------------
     print("\n[TEST 5] Qiskit Circuit-Level Quantum Verification")
     try:
-        qiskit_res = sim.verify_with_qiskit(num_photons=400, p_eve=1.0, noise_rate=0.0)
+        qiskit_res = sim.verify_with_qiskit(num_photons=2000, p_eve=1.0, noise_rate=0.0)
         print(f"  Qiskit Measured Sifted Count: {qiskit_res['sifted_count']}")
         print(f"  Qiskit Empirical QBER:        {qiskit_res['empirical_qber']:.4f}")
         print(f"  Qiskit Theoretical QBER:      {qiskit_res['theoretical_qber']:.4f}")
-        assert abs(qiskit_res['empirical_qber'] - 0.25) < 0.08, "Qiskit simulation deviated from 25%"
-        print("  -> PASSED: Circuit-level Qiskit simulation confirms exact quantum physics.")
-    except Exception as e:
-        print(f"  [Qiskit verification note]: {e}")
+        assert abs(qiskit_res['empirical_qber'] - 0.25) < 0.04, "Qiskit simulation deviated from 25%"
+        qiskit_clean = sim.verify_with_qiskit(num_photons=1000, p_eve=0.0, noise_rate=0.0)
+        print(f"  Qiskit QBER without Eve:      {qiskit_clean['empirical_qber']:.4f}")
+        assert qiskit_clean['empirical_qber'] == 0.0, "Qiskit no-Eve run should give zero QBER"
+        print("  -> PASSED: Circuit-level Qiskit simulation (real measure-and-resend) matches theory.")
+    except ImportError as e:
+        print(f"  [Qiskit not installed, skipping]: {e}")
 
     print("\n" + "=" * 70)
     print("ALL QUANTUM PHYSICS AND SIMULATION CHECKS PASSED SUCCESSFULLY!")

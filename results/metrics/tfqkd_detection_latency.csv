@@ -1,0 +1,17 @@
+p_eve,model,mean_delta_t,detection_rate,pre_attack_fpr,post_attack_alarm_rate,num_sessions
+0.02,Z-QBER monitor (99th pct),60.025,0.625,0.012912087912087911,0.01175,40
+0.02,Static 11% on E_X,100.0,0.0,0.0,0.0,40
+0.02,Hoeffding windowed on E_X,10.975,1.0,0.1697802197802198,0.6435,40
+0.02,Random Forest on E_X features,33.375,0.925,0.007417582417582417,0.169,40
+0.05,Z-QBER monitor (99th pct),64.675,0.575,0.010714285714285714,0.00825,40
+0.05,Static 11% on E_X,100.0,0.0,0.0,0.0,40
+0.05,Hoeffding windowed on E_X,2.975,1.0,0.16263736263736264,0.97025,40
+0.05,Random Forest on E_X features,7.425,1.0,0.008791208791208791,0.88025,40
+0.1,Z-QBER monitor (99th pct),48.15,0.825,0.010439560439560439,0.01375,40
+0.1,Static 11% on E_X,88.175,0.2,0.0,0.0025,40
+0.1,Hoeffding windowed on E_X,1.25,1.0,0.15879120879120878,0.9875,40
+0.1,Random Forest on E_X features,0.225,1.0,0.009065934065934067,0.9975,40
+0.15,Z-QBER monitor (99th pct),61.825,0.625,0.012087912087912088,0.009,40
+0.15,Static 11% on E_X,11.4,1.0,0.0,0.19475,40
+0.15,Hoeffding windowed on E_X,0.625,1.0,0.13186813186813187,0.99375,40
+0.15,Random Forest on E_X features,0.0,1.0,0.004395604395604396,1.0,40

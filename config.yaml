@@ -11,7 +11,8 @@ simulation:
 physics:
   baseline_qber: 0.03               # e_0: Stationary fiber background noise (3%)
   abort_qber_threshold: 0.11        # Static 11% BB84 theoretical threshold
-  scintillation_std: 0.008          # Log-normal noise standard deviation for free-space
+  scintillation_std: 0.30           # Stationary std of AR(1) log-QBER (was 0.008: QBER std 0.0002, below the
+                                    # ~0.0075 binomial noise of a 512-bit block, so the channel shift was invisible)
   scintillation_ar1_phi: 0.75       # Temporal correlation parameter for atmospheric turbulence
   
 classes:
@@ -59,3 +60,29 @@ paths:
   processed_data: "data/processed"
   figures: "results/figures"
   metrics: "results/metrics"
+
+# Modern protocol: Sending-or-Not-Sending Twin-Field QKD (scripts/05_modern_qkd_tfqkd.py)
+tf_qkd:
+  channel:
+    alpha_db_per_km: 0.2            # Standard fiber attenuation
+    eta_det: 0.6                    # Charlie's detector efficiency
+    p_dark: 1.0e-8                  # Dark-count probability per pulse
+    phase_noise_rad: 0.35           # Residual phase error after compensation (~3.3% X error)
+    phase_slices: 16                # M phase slices for X-window phase matching
+    f_ec: 1.1                       # Error-correction inefficiency
+  bb84_misalignment: 0.015          # e_d for the decoy-state BB84 comparison curve
+  time_series:
+    distance_km: 200
+    intensities: {eps: 0.05, mu_z: 0.45, mu_1: 0.08, mu_2: 0.30}
+    z_pairs_per_block: 2.0e+7       # ~5,400 Z-window events per block at 200 km
+    x_pairs_per_block: 5.0e+6       # ~4,800 phase-matched X events per block
+    phase_drift_std: 0.15           # AR(1) log-drift of the residual phase noise
+    phase_drift_phi: 0.8
+    blocks_per_session: 200
+    attack_start_block: 101
+    p_eve_range: [0.02, 0.15]       # Fraction of pulses whose phase Eve scrambles
+    train_sessions: 400
+    val_sessions: 100
+    latency_p_eve_grid: [0.02, 0.05, 0.10, 0.15]
+    latency_sessions_per_p: 40
+    trace_p_eve: 0.05

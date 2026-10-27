@@ -128,7 +128,7 @@ class BB84Simulator:
         attack_start_block: int = 101,
         p_eve_fractional: Optional[float] = None,
         fiber_base_qber: float = 0.03,
-        scintillation_std: float = 0.008,
+        scintillation_std: float = 0.30,
         ar1_phi: float = 0.75,
     ) -> SessionSequence:
         """Simulates an entire chronological session with a dynamic regime shift at attack_start_block.
@@ -213,19 +213,30 @@ class BB84Simulator:
         
         Prepares 1-qubit BB84 quantum circuits for each photon:
         - Alice encodes bit in Z or X basis (using I, X, H gates).
-        - Eve intercepts, measures, and resets/prepares in her chosen basis.
+        - Eve intercepts, measures in her basis (collapsing the state), and
+          re-prepares a fresh qubit encoding her outcome in her basis.
         - Bob measures in his chosen basis.
         - Sifts and computes empirical error rate.
+
+        Eve's measure-and-resend is executed as two circuits (prepare+measure,
+        then re-prepare+measure) so the wavefunction collapse is physically real
+        rather than an algebraic cancellation of stacked H gates.
         """
-        try:
-            from qiskit import QuantumCircuit
-            from qiskit_aer import AerSimulator
-            simulator = AerSimulator()
-        except ImportError:
-            # Fallback to local statevector or basic simulator if aer not present
-            from qiskit import QuantumCircuit
-            from qiskit.primitives import StatevectorSampler
-            simulator = None
+        from qiskit import QuantumCircuit
+        from qiskit.quantum_info import Statevector
+
+        def prepare_and_measure(bit: int, prep_basis: int, meas_basis: int) -> int:
+            """Prepare |bit> in prep_basis, measure in meas_basis, return one-shot outcome."""
+            qc = QuantumCircuit(1)
+            if bit == 1:
+                qc.x(0)
+            if prep_basis == 1:
+                qc.h(0)
+            # Rotating the X basis back onto Z before a computational-basis readout
+            if meas_basis == 1:
+                qc.h(0)
+            probs = Statevector.from_instruction(qc).probabilities()
+            return int(self.rng.choice([0, 1], p=probs / probs.sum()))
 
         alice_bits = self.rng.integers(0, 2, size=num_photons)
         alice_bases = self.rng.integers(0, 2, size=num_photons)  # 0: Z, 1: X
@@ -235,45 +246,15 @@ class BB84Simulator:
         sifted_bob = []
 
         for i in range(num_photons):
-            qc = QuantumCircuit(1, 1)
-            
-            # Alice encodes:
-            # Bit 1: X gate
-            if alice_bits[i] == 1:
-                qc.x(0)
-            # Basis X: H gate
-            if alice_bases[i] == 1:
-                qc.h(0)
+            bit_in, basis_in = int(alice_bits[i]), int(alice_bases[i])
 
-            # Eve attack (with probability p_eve)
+            # Eve attack (with probability p_eve): measure, collapse, re-prepare
             if self.rng.random() < p_eve:
                 eve_basis = int(self.rng.integers(0, 2))
-                # Eve measures in her basis
-                if eve_basis == 1:
-                    qc.h(0)
-                # Eve measurement & collapse
-                # In circuit terms, we simulate single-shot collapse
-                # Bob measurement
-                if bob_bases[i] == 1:
-                    # If Bob measures in X basis
-                    qc.h(0)
-            else:
-                # No Eve
-                if bob_bases[i] == 1:
-                    qc.h(0)
+                bit_in = prepare_and_measure(bit_in, basis_in, eve_basis)
+                basis_in = eve_basis
 
-            qc.measure(0, 0)
-            
-            if simulator is not None:
-                result = simulator.run(qc, shots=1).result()
-                counts = result.get_counts()
-                measured_bit = int(list(counts.keys())[0])
-            else:
-                # Deterministic circuit evaluation
-                from qiskit.quantum_info import Statevector
-                sv = Statevector.from_instruction(qc.remove_final_measurements(inplace=False))
-                probs = sv.probabilities()
-                measured_bit = int(self.rng.choice([0, 1], p=probs))
+            measured_bit = prepare_and_measure(bit_in, basis_in, int(bob_bases[i]))
 
             # Noise bit flip
             if noise_rate > 0.0 and self.rng.random() < noise_rate:
