@@ -2,6 +2,7 @@
 
 Supports high-performance vectorized simulation of chronological blocks and sessions,
 as well as circuit-level Qiskit quantum circuit verification.
+Supports 5 major operational classes (Normal + 4 Major Attack Archetypes).
 """
 
 from dataclasses import dataclass
@@ -24,6 +25,19 @@ class BlockResult:
     p_eve: float
     class_id: int
     intercepted_count: int
+    # Rich metrics for the 63 physics-informed features
+    sifted_z: int = 0
+    errors_z: int = 0
+    qber_z: float = 0.0
+    sifted_x: int = 0
+    errors_x: int = 0
+    qber_x: float = 0.0
+    detection_count: int = 0
+    transmission_efficiency: float = 0.50
+    error_gap_mean: float = 0.0
+    error_gap_std: float = 0.0
+    error_gap_cv: float = 0.0
+    error_clustering: float = 0.0
 
 
 @dataclass
@@ -37,7 +51,19 @@ class SessionSequence:
     block_qbers: np.ndarray          # Array of block QBER values of length B
     block_sifted_lens: np.ndarray    # Array of sifted bit lengths per block
     block_channel_noises: np.ndarray # Instantaneous channel noise per block
-    block_classes: np.ndarray        # Per-block ground truth class (0, 1, or 2)
+    block_classes: np.ndarray        # Per-block ground truth class
+    # Rich Phase 2 arrays
+    block_qbers_z: Optional[np.ndarray] = None
+    block_qbers_x: Optional[np.ndarray] = None
+    block_sifted_z: Optional[np.ndarray] = None
+    block_sifted_x: Optional[np.ndarray] = None
+    block_raw_photons: Optional[np.ndarray] = None
+    block_detection_counts: Optional[np.ndarray] = None
+    block_transmission_effs: Optional[np.ndarray] = None
+    block_error_gap_means: Optional[np.ndarray] = None
+    block_error_gap_stds: Optional[np.ndarray] = None
+    block_error_gap_cvs: Optional[np.ndarray] = None
+    block_error_clusterings: Optional[np.ndarray] = None
 
 
 class BB84Simulator:
@@ -59,53 +85,92 @@ class BB84Simulator:
         channel_model: Union[FiberNoiseModel, FreeSpaceNoiseModel],
         eve: EveAttacker,
     ) -> BlockResult:
-        """Simulates one block of BB84 transmission with vectorized NumPy speed.
-        
-        Steps:
-        1. Alice samples random bits in {0, 1} and random bases in {0 (Z), 1 (X)}.
-        2. Eve intercepts pulses according to her attack strategy.
-        3. Bob samples random measurement bases in {0, 1}.
-        4. Bob measures the received states.
-        5. Channel noise is applied.
-        6. Basis sifting retains pulses where Alice and Bob bases coincided.
-        7. Block QBER is calculated.
-        """
-        # Step 1: Alice state preparation
+        """Simulates one block of BB84 transmission with vectorized NumPy speed."""
+        # Step 1: Alice samples bits and bases
         alice_bits = self.rng.integers(0, 2, size=self.raw_photons, dtype=np.int8)
         alice_bases = self.rng.integers(0, 2, size=self.raw_photons, dtype=np.int8)
 
-        # Step 2: Eve interception & re-emission
-        resend_bits, resend_bases, intercepted_mask = eve.intercept_and_resend(
-            alice_bits, alice_bases
-        )
-
-        # Step 3: Bob basis selection
+        # Step 2: Bob basis selection
         bob_bases = self.rng.integers(0, 2, size=self.raw_photons, dtype=np.int8)
 
-        # Step 4: Bob physical measurement
-        # If Bob's basis matches incoming photon basis, he detects resend_bits deterministically.
-        # If Bob's basis differs from incoming photon basis, outcome is uniformly 0 or 1.
-        bob_matches_in = (bob_bases == resend_bases)
-        random_outcomes = self.rng.integers(0, 2, size=self.raw_photons, dtype=np.int8)
-        bob_detected_bits = np.where(bob_matches_in, resend_bits, random_outcomes)
-
-        # Step 5: Channel noise
+        # Step 3: Eve attack and channel propagation
         effective_noise = channel_model.get_block_qber(block_idx)
+
+        # Use full physical attack model for 5-class simulation
+        attack_res = eve.execute_full_attack(
+            alice_bits=alice_bits,
+            alice_bases=alice_bases,
+            bob_bases=bob_bases,
+            base_channel_transmittance=1.0,
+            dark_count_rate=1e-5,
+        )
+
+        detection_mask = attack_res["bob_detected_mask"]
+        bob_detected_bits = attack_res["bob_detected_bits"]
+        intercepted_mask = attack_res["intercepted_mask"]
+
+        # Step 4: Channel background depolarizing noise applied to detected pulses
+        if eve.attack_type == "fake_state":
+            # Macroscopic classical bright pulses overcome single-photon depolarizing noise
+            effective_noise = min(0.005, effective_noise * 0.15)
         bob_final_bits = channel_model.apply_noise(bob_detected_bits, effective_noise)
 
-        # Step 6: Basis Sifting (Alice basis == Bob basis)
-        sift_mask = (alice_bases == bob_bases)
+        # Step 5: Sifting (Alice basis == Bob basis AND photon was detected)
+        sift_mask = (alice_bases == bob_bases) & detection_mask
         sifted_alice = alice_bits[sift_mask]
         sifted_bob = bob_final_bits[sift_mask]
         num_sifted = len(sifted_alice)
 
-        # Step 7: QBER calculation
+        # Step 6: Overall and basis-dependent QBER calculation
         if num_sifted > 0:
-            errors = int(np.sum(sifted_alice != sifted_bob))
+            sifted_errors = (sifted_alice != sifted_bob).astype(np.int8)
+            errors = int(np.sum(sifted_errors))
             block_qber = float(errors / num_sifted)
+
+            # Error-gap statistics within the block
+            err_pos = np.where(sifted_errors == 1)[0]
+            if len(err_pos) >= 2:
+                gaps = np.diff(err_pos)
+                gap_mean = float(np.mean(gaps))
+                gap_std = float(np.std(gaps))
+                gap_cv = float(gap_std / (gap_mean + 1e-9))
+                consecutive_pairs = int(np.sum(gaps == 1))
+                clustering = float(consecutive_pairs / max(len(err_pos), 1))
+            else:
+                gap_mean = float(num_sifted) if len(err_pos) == 0 else float(num_sifted / 2)
+                gap_std = 0.0
+                gap_cv = 0.0
+                clustering = 0.0
         else:
             errors = 0
             block_qber = 0.0
+            gap_mean = 0.0
+            gap_std = 0.0
+            gap_cv = 0.0
+            clustering = 0.0
+
+        # Basis breakdown
+        sift_z = sift_mask & (alice_bases == 0)
+        sift_x = sift_mask & (alice_bases == 1)
+        num_z = int(np.sum(sift_z))
+        num_x = int(np.sum(sift_x))
+
+        if num_z > 0:
+            err_z = int(np.sum(alice_bits[sift_z] != bob_final_bits[sift_z]))
+            qber_z = float(err_z / num_z)
+        else:
+            err_z = 0
+            qber_z = 0.0
+
+        if num_x > 0:
+            err_x = int(np.sum(alice_bits[sift_x] != bob_final_bits[sift_x]))
+            qber_x = float(err_x / num_x)
+        else:
+            err_x = 0
+            qber_x = 0.0
+
+        num_detected = int(np.sum(detection_mask))
+        trans_eff = float(num_detected / max(self.raw_photons, 1))
 
         return BlockResult(
             block_index=block_idx,
@@ -117,6 +182,18 @@ class BB84Simulator:
             p_eve=eve.p_eve,
             class_id=eve.class_id,
             intercepted_count=int(np.sum(intercepted_mask)),
+            sifted_z=num_z,
+            errors_z=err_z,
+            qber_z=qber_z,
+            sifted_x=num_x,
+            errors_x=err_x,
+            qber_x=qber_x,
+            detection_count=num_detected,
+            transmission_efficiency=trans_eff,
+            error_gap_mean=gap_mean,
+            error_gap_std=gap_std,
+            error_gap_cv=gap_cv,
+            error_clustering=clustering,
         )
 
     def simulate_session(
@@ -130,15 +207,20 @@ class BB84Simulator:
         fiber_base_qber: float = 0.03,
         scintillation_std: float = 0.30,
         ar1_phi: float = 0.75,
+        attack_mode: str = "auto",  # 'auto', 'legacy', or 'multiattack'
     ) -> SessionSequence:
-        """Simulates an entire chronological session with a dynamic regime shift at attack_start_block.
+        """Simulates an entire chronological session with a dynamic regime shift.
         
-        Blocks 1 .. (attack_start_block - 1) are strictly Benign (Class 0).
-        At attack_start_block, Eve activates with target_attack_class:
-            - Class 0: Remains Benign throughout all B blocks
-            - Class 1: Full IR (p_eve = 1.0)
-            - Class 2: Fractional IR (p_eve in [0.10, 0.30])
+        Supports both legacy mode (0: Benign, 1: Full IR, 2: Fractional IR) and
+        Phase 2 multi-attack mode (0: Normal, 1: Fractional IR, 2: PNS, 3: Fake State, 4: Time-Shift).
         """
+        # Auto-detect mode if not explicitly set
+        if attack_mode == "auto":
+            if target_attack_class in [3, 4]:
+                attack_mode = "multiattack"
+            else:
+                attack_mode = "legacy"
+
         # Instantiate channel noise model
         if channel_type == "fiber":
             channel = FiberNoiseModel(base_qber=fiber_base_qber, random_state=int(self.rng.integers(1e9)))
@@ -152,43 +234,80 @@ class BB84Simulator:
         else:
             raise ValueError(f"Unknown channel_type: {channel_type}")
 
-        # Determine Eve's attack parameters
-        if target_attack_class == 0:
-            attack_p_eve = 0.0
-            eve_attack = EveAttacker(class_id=0, p_eve=0.0, random_state=int(self.rng.integers(1e9)))
-        elif target_attack_class == 1:
-            attack_p_eve = 1.0
-            eve_attack = EveAttacker(class_id=1, p_eve=1.0, random_state=int(self.rng.integers(1e9)))
-        elif target_attack_class == 2:
-            if p_eve_fractional is not None:
-                attack_p_eve = float(p_eve_fractional)
+        # Configure Eve
+        seed_eve = int(self.rng.integers(1e9))
+        if attack_mode == "legacy":
+            if target_attack_class == 0:
+                attack_p_eve = 0.0
+                eve_attack = EveAttacker(class_id=0, p_eve=0.0, random_state=seed_eve)
+            elif target_attack_class == 1:
+                attack_p_eve = 1.0
+                eve_attack = EveAttacker(class_id=1, p_eve=1.0, random_state=seed_eve)
+            elif target_attack_class == 2:
+                attack_p_eve = float(p_eve_fractional) if p_eve_fractional is not None else float(self.rng.uniform(0.10, 0.30))
+                eve_attack = EveAttacker(class_id=1, p_eve=attack_p_eve, random_state=seed_eve)
             else:
-                attack_p_eve = float(self.rng.uniform(0.10, 0.30))
-            eve_attack = EveAttacker(class_id=2, p_eve=attack_p_eve, random_state=int(self.rng.integers(1e9)))
-        else:
-            raise ValueError(f"Invalid attack_class: {target_attack_class}")
+                raise ValueError(f"Invalid legacy attack_class: {target_attack_class}")
+        else:  # multiattack mode (5 classes)
+            if target_attack_class == 0:
+                attack_p_eve = 0.0
+                eve_attack = EveAttacker(class_id=0, p_eve=0.0, random_state=seed_eve)
+            elif target_attack_class == 1:  # Fractional IR
+                attack_p_eve = float(p_eve_fractional) if p_eve_fractional is not None else float(self.rng.uniform(0.10, 0.30))
+                eve_attack = EveAttacker(class_id=1, p_eve=attack_p_eve, random_state=seed_eve)
+            elif target_attack_class == 2:  # PNS
+                attack_p_eve = float(self.rng.uniform(0.20, 0.45))
+                eve_attack = EveAttacker(class_id=2, p_eve=attack_p_eve, mu_wcp=attack_p_eve, random_state=seed_eve)
+            elif target_attack_class == 3:  # Fake State
+                attack_p_eve = 1.0
+                eve_attack = EveAttacker(class_id=3, p_eve=1.0, random_state=seed_eve)
+            elif target_attack_class == 4:  # Time-Shift
+                attack_p_eve = float(self.rng.uniform(0.50, 0.85))
+                eve_attack = EveAttacker(class_id=4, p_eve=attack_p_eve, shift_delay_prob=attack_p_eve, random_state=seed_eve)
+            else:
+                raise ValueError(f"Invalid multiattack class: {target_attack_class}")
 
         benign_eve = EveAttacker(class_id=0, p_eve=0.0, random_state=int(self.rng.integers(1e9)))
 
+        # Preallocate block arrays
         qbers = np.zeros(blocks_per_session, dtype=np.float64)
+        qbers_z = np.zeros(blocks_per_session, dtype=np.float64)
+        qbers_x = np.zeros(blocks_per_session, dtype=np.float64)
         sifted_lens = np.zeros(blocks_per_session, dtype=np.int32)
+        sifted_z = np.zeros(blocks_per_session, dtype=np.int32)
+        sifted_x = np.zeros(blocks_per_session, dtype=np.int32)
+        raw_photons = np.full(blocks_per_session, self.raw_photons, dtype=np.int32)
+        det_counts = np.zeros(blocks_per_session, dtype=np.int32)
+        trans_effs = np.zeros(blocks_per_session, dtype=np.float64)
+        gap_means = np.zeros(blocks_per_session, dtype=np.float64)
+        gap_stds = np.zeros(blocks_per_session, dtype=np.float64)
+        gap_cvs = np.zeros(blocks_per_session, dtype=np.float64)
+        clusterings = np.zeros(blocks_per_session, dtype=np.float64)
         channel_noises = np.zeros(blocks_per_session, dtype=np.float64)
         block_classes = np.zeros(blocks_per_session, dtype=np.int32)
 
         for b in range(1, blocks_per_session + 1):
             idx = b - 1
             if b < attack_start_block or target_attack_class == 0:
-                # Pre-attack benign regime
                 active_eve = benign_eve
                 block_classes[idx] = 0
             else:
-                # Active attack regime
                 active_eve = eve_attack
                 block_classes[idx] = target_attack_class
 
             res = self.simulate_block_vectorized(b, channel, active_eve)
             qbers[idx] = res.qber
+            qbers_z[idx] = res.qber_z
+            qbers_x[idx] = res.qber_x
             sifted_lens[idx] = res.sifted_bits
+            sifted_z[idx] = res.sifted_z
+            sifted_x[idx] = res.sifted_x
+            det_counts[idx] = res.detection_count
+            trans_effs[idx] = res.transmission_efficiency
+            gap_means[idx] = res.error_gap_mean
+            gap_stds[idx] = res.error_gap_std
+            gap_cvs[idx] = res.error_gap_cv
+            clusterings[idx] = res.error_clustering
             channel_noises[idx] = res.effective_channel_noise
 
         return SessionSequence(
@@ -201,6 +320,17 @@ class BB84Simulator:
             block_sifted_lens=sifted_lens,
             block_channel_noises=channel_noises,
             block_classes=block_classes,
+            block_qbers_z=qbers_z,
+            block_qbers_x=qbers_x,
+            block_sifted_z=sifted_z,
+            block_sifted_x=sifted_x,
+            block_raw_photons=raw_photons,
+            block_detection_counts=det_counts,
+            block_transmission_effs=trans_effs,
+            block_error_gap_means=gap_means,
+            block_error_gap_stds=gap_stds,
+            block_error_gap_cvs=gap_cvs,
+            block_error_clusterings=clusterings,
         )
 
     def verify_with_qiskit(
@@ -209,37 +339,23 @@ class BB84Simulator:
         p_eve: float = 1.0,
         noise_rate: float = 0.0,
     ) -> Dict[str, Any]:
-        """Runs circuit-level Qiskit simulation for rigorous quantum physics verification.
-        
-        Prepares 1-qubit BB84 quantum circuits for each photon:
-        - Alice encodes bit in Z or X basis (using I, X, H gates).
-        - Eve intercepts, measures in her basis (collapsing the state), and
-          re-prepares a fresh qubit encoding her outcome in her basis.
-        - Bob measures in his chosen basis.
-        - Sifts and computes empirical error rate.
-
-        Eve's measure-and-resend is executed as two circuits (prepare+measure,
-        then re-prepare+measure) so the wavefunction collapse is physically real
-        rather than an algebraic cancellation of stacked H gates.
-        """
+        """Validates BB84 intercept-resend physics using gate-level Qiskit circuits."""
         from qiskit import QuantumCircuit
         from qiskit.quantum_info import Statevector
 
         def prepare_and_measure(bit: int, prep_basis: int, meas_basis: int) -> int:
-            """Prepare |bit> in prep_basis, measure in meas_basis, return one-shot outcome."""
             qc = QuantumCircuit(1)
             if bit == 1:
                 qc.x(0)
             if prep_basis == 1:
                 qc.h(0)
-            # Rotating the X basis back onto Z before a computational-basis readout
             if meas_basis == 1:
                 qc.h(0)
             probs = Statevector.from_instruction(qc).probabilities()
             return int(self.rng.choice([0, 1], p=probs / probs.sum()))
 
         alice_bits = self.rng.integers(0, 2, size=num_photons)
-        alice_bases = self.rng.integers(0, 2, size=num_photons)  # 0: Z, 1: X
+        alice_bases = self.rng.integers(0, 2, size=num_photons)
         bob_bases = self.rng.integers(0, 2, size=num_photons)
 
         sifted_alice = []
@@ -248,7 +364,6 @@ class BB84Simulator:
         for i in range(num_photons):
             bit_in, basis_in = int(alice_bits[i]), int(alice_bases[i])
 
-            # Eve attack (with probability p_eve): measure, collapse, re-prepare
             if self.rng.random() < p_eve:
                 eve_basis = int(self.rng.integers(0, 2))
                 bit_in = prepare_and_measure(bit_in, basis_in, eve_basis)
@@ -256,22 +371,21 @@ class BB84Simulator:
 
             measured_bit = prepare_and_measure(bit_in, basis_in, int(bob_bases[i]))
 
-            # Noise bit flip
             if noise_rate > 0.0 and self.rng.random() < noise_rate:
                 measured_bit = 1 - measured_bit
 
-            # Sifting
             if alice_bases[i] == bob_bases[i]:
                 sifted_alice.append(alice_bits[i])
                 sifted_bob.append(measured_bit)
 
         sifted_alice = np.array(sifted_alice)
         sifted_bob = np.array(sifted_bob)
-        empirical_qber = float(np.mean(sifted_alice != sifted_bob)) if len(sifted_alice) > 0 else 0.0
+        num_sifted = len(sifted_alice)
+        qber = float(np.mean(sifted_alice != sifted_bob)) if num_sifted > 0 else 0.0
 
         return {
             "num_photons": num_photons,
-            "sifted_count": len(sifted_alice),
-            "empirical_qber": empirical_qber,
+            "sifted_count": num_sifted,
+            "empirical_qber": qber,
             "theoretical_qber": EveAttacker.theoretical_qber(noise_rate, p_eve),
         }

@@ -86,3 +86,28 @@ tf_qkd:
     latency_p_eve_grid: [0.02, 0.05, 0.10, 0.15]
     latency_sessions_per_p: 40
     trace_p_eve: 0.05
+
+
+# Phase 2: Multi-Attack Classification (5 Classes, 63 Physics Features)
+multiattack:
+  classes:
+    0: "Normal Channel"
+    1: "Fractional Intercept-Resend"
+    2: "Photon Number Splitting"
+    3: "Fake State Blinding"
+    4: "Time-Shift"
+  window_size: 50
+  ema_span: 10
+  sessions_per_class: 1000          # 5,000 sessions total (~500k feature rows)
+  blocks_per_session: 150
+  attack_start_block: 76
+  raw_photons_per_block: 1024
+  train_split: 0.80
+  random_seed: 42
+  xgboost:
+    n_estimators: 250
+    max_depth: 6
+    learning_rate: 0.08
+    subsample: 0.85
+    colsample_bytree: 0.80
+    random_state: 42

@@ -1,0 +1,6 @@
+group_name,display_name,features_removed,ablated_accuracy,accuracy_drop_pct
+statistical,Statistical,7,99.91188118811881,0.02277227722771613
+burst_instability,Burst Instability,10,99.90693069306931,0.027722772277215313
+spectral_temporal,Spectral Temporal,12,99.90693069306931,0.027722772277215313
+basis_dependent,Basis Dependent,12,99.9019801980198,0.032673267326728705
+channel_interaction,Channel Interaction,22,99.04653465346534,0.8881188118811849

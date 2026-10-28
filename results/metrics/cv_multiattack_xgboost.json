@@ -1,0 +1,12 @@
+{
+  "model": "XGBClassifier (multi:softprob, 5 classes)",
+  "num_features": 63,
+  "cv_folds": 5,
+  "mean_accuracy": 0.9990600000000001,
+  "std_accuracy": 0.00019595917942263267,
+  "mean_macro_f1": 0.9990765049212846,
+  "std_macro_f1": 0.00020811367344247218,
+  "mean_logloss": 0.003826411301730731,
+  "train_samples": 404000,
+  "training_time_sec": 30.564890384674072
+}

@@ -64,8 +64,13 @@ qkd-explainable-anomaly-detection/
     ├── 02_generate_dataset.py   # Multi-condition synthetic dataset generator
     ├── 03_run_benchmarks.py     # Train, evaluate latency & cross-channel shift
     ├── 04_explain_and_plot.py   # Generate SHAP plots and 300 DPI publication figures
-    └── 05_modern_qkd_tfqkd.py   # Twin-Field QKD: key rate vs distance, phase-attack detection
-tests/                           # pytest suite (BB84 physics, feature causality, TF-QKD physics)
+    ├── 05_modern_qkd_tfqkd.py   # Twin-Field QKD: key rate vs distance, phase-attack detection
+    ├── 06_generate_multiattack_dataset.py  # Phase 2: 5-class multi-attack dataset generator
+    ├── 07_train_multiattack_classifiers.py # Phase 2: Train & tune multi-class XGBoost
+    ├── 08_evaluate_multiattack.py          # Phase 2: Benchmark metrics, confusion matrix & ROC
+    └── 09_explain_and_ablation.py          # Phase 2: SHAP ranking & feature group ablation
+app.py                           # Phase 2: Interactive Streamlit Security Operations Center (SOC)
+tests/                           # pytest suite: 23 tests (BB84, Twin-Field, 5-class attacks)
 ```
 
 ---
@@ -102,7 +107,22 @@ python scripts/04_explain_and_plot.py
 # 5. Modern protocol: Sending-or-Not-Sending Twin-Field QKD
 python scripts/05_modern_qkd_tfqkd.py
 
-# Run the test suite (17 tests)
+# 6. Phase 2: Generate 5-class multi-attack dataset (63 features)
+python scripts/06_generate_multiattack_dataset.py
+
+# 7. Phase 2: Train multi-class XGBoost classifier
+python scripts/07_train_multiattack_classifiers.py
+
+# 8. Phase 2: Evaluate benchmarks, confusion matrix & ROC curves
+python scripts/08_evaluate_multiattack.py
+
+# 9. Phase 2: SHAP explainability & feature group ablation
+python scripts/09_explain_and_ablation.py
+
+# 10. Run the interactive Streamlit SOC dashboard
+python -m streamlit run app.py
+
+# Run the test suite (23 tests)
 python -m pytest
 ```
 
@@ -227,7 +247,59 @@ Everything is simulated: there is no hardware, and key rates are asymptotic (no 
 
 ---
 
-## 8. Mathematical Formulations
+## 8. Phase 2: Multi-Attack Classification & Streamlit SOC Dashboard
+*Reference Architecture:* *"Beyond the QBER Threshold: A Temporal QBER Based Machine Learning Framework for Multi Attack Detection in BB84 QKD"* (IIT Mandi & DRDO, arXiv:2608.04047v1)
+
+Phase 2 scales the framework from binary anomaly detection to a comprehensive **5-class multi-attack classification engine** powered by a dedicated champion classifier (**XGBoost**) and a real-time **Streamlit Security Operations Center (SOC)**.
+
+### 8.1 The 5 Operational Regimes
+
+| Class | Threat Archetype | Physical Layer Exploited | Primary Feature Fingerprint |
+|:---:|---|---|---|
+| **0** | **Normal Channel** | Baseline fiber/atmospheric link | Stationary QBER ($\approx 3\%$), symmetric basis errors ($Q_Z \approx Q_X$). |
+| **1** | **Fractional IR** | Quantum state vector disturbance | Elevated **jump energy, temporal variance, Fano factor** ($QBER \approx 5.5\% - 9.5\%$). |
+| **2** | **PNS Attack** | Laser multi-photon pulse splitting | **Zero added QBER ($\Delta QBER \approx 0$)**, abnormal drop in key generation rate and transmission efficiency. |
+| **3** | **Fake State** | SPAD detector blinding into linear mode | **Near-zero QBER ($\approx 0.3\%$)**, deterministic basis-coincidence, abnormal error-gap CV. |
+| **4** | **Time-Shift** | Timing & efficiency detector mismatch | Severe **basis asymmetry ($|Q_{\text{rect}} - Q_{\text{diag}}| \gg 0$)** beneath 11% average threshold. |
+
+### 8.2 63 Physics-Informed Feature Categories ($W = 50$)
+Extracted over causal backward-looking sliding windows ($W=50$) with zero future leakage:
+1. **Statistical (7):** `qber_mean`, `qber_variance`, `qber_std`, `qber_skewness`, `qber_kurtosis`, `qber_iqr`, `qber_cv`.
+2. **Burst & Instability (10):** `spike_density`, `burst_duration`, `jump_energy`, `temporal_drift_slope`, `max_jump`, `jump_count`, `error_gap_mean`, `error_gap_std`, `error_gap_cv`, `burstiness_index`.
+3. **Spectral & Temporal (12):** `autocorr_lag_1` to `lag_5`, `dft_low_energy`, `dft_mid_energy`, `dft_high_energy`, `spectral_entropy`, `spectral_centroid`, `shannon_entropy`, `ema_divergence`.
+4. **Basis-Dependent (12):** `qber_rectilinear` ($q_Z$), `qber_diagonal` ($q_X$), `basis_asymmetry` ($|q_Z - q_X|$), `basis_ratio`, `basis_burst_energy_z`, `basis_burst_energy_x`, `basis_variance_ratio`, `basis_cross_correlation`, `basis_skewness_diff`, `basis_kurtosis_diff`, `sift_ratio_z`, `sift_ratio_x`.
+5. **Channel Interaction & Multi-Scale (22):** `key_generation_rate`, `transmission_efficiency`, `qber_loss_interaction`, `qber_loss_product`, `loss_anomaly_index`, `dark_count_ratio`, nested multi-scale statistics (`W=10, 25, 50` mean, std, fano, drift), `error_clustering_coefficient`, `loss_gradient`, `efficiency_entropy`, `qber_stability_index`.
+
+### 8.3 Experimental Benchmarks (101,000 Test Blocks)
+
+| Detector | Accuracy | Macro-F1 | Precision | False Negative Rate (FNR) |
+|---|:---:|:---:|:---:|:---:|
+| **Conventional Fixed 11% QBER Threshold** | 40.59% | 0.2887 | 0.2030 | **100.0%** (Missed all stealthy attacks) |
+| **Proposed XGBoost Multi-Attack Framework** | **99.93%** | **0.9994** | **0.9995** | **0.075%** (FNR reduced by 99.9%) |
+
+#### Per-Class Performance Breakdown (`multiattack_per_class_f1.csv`)
+* **Normal Channel:** Precision: 99.89% | Recall: 99.96% | F1: **0.9992**
+* **Fractional IR:** Precision: 99.88% | Recall: 99.70% | F1: **0.9979**
+* **PNS Attack:** Precision: 99.99% | Recall: 99.99% | F1: **0.9999**
+* **Fake State:** Precision: 99.99% | Recall: 99.99% | F1: **0.9999**
+* **Time-Shift:** Precision: 100.00% | Recall: 99.99% | F1: **1.0000**
+
+#### Leave-One-Group-Out Feature Ablation Study (`fig_ablation_5class.png`)
+* Removing **Channel Interaction** features caused the largest drop (**-0.89%**), followed by **Basis-Dependent** and **Burst/Spectral** features, confirming the DRDO paper's finding that multi-attack discrimination requires channel and basis interaction metrics beyond scalar QBER.
+
+### 8.4 Running the Streamlit Security Operations Center (SOC)
+Launch the interactive dashboard with:
+```bash
+streamlit run app.py
+```
+* **Real-Time Temporal Monitor:** Live streaming QBER chart with the 11% threshold line and dual-basis ($Q_Z$ vs $Q_X$) error tracker.
+* **XGBoost Threat HUD:** Live 5-class horizontal confidence bars, detection latency counter ($\Delta T$), and automated key-abort simulation.
+* **SHAP Explainability Card:** On-the-fly waterfall plot showing exact physics feature contributions.
+* **Paper Visualizer:** Embedded 300 DPI Confusion Matrix, ROC curves, and ablation tables.
+
+---
+
+## 9. Mathematical Formulations
 
 ### Hoeffding Baseline Threshold (Lee et al., 2022)
 For a sifted key block of size $N$ with baseline error $e_0$ and significance level $\alpha = 0.01$:
@@ -245,7 +317,7 @@ Given discrete error sequence $E = [e_1, e_2, \dots, e_t]$, feature vectors $x_t
 
 ---
 
-## 9. Citation
+## 10. Citation
 
 If you use this benchmark codebase in your research, please cite:
 ```bibtex
