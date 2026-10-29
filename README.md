@@ -196,7 +196,15 @@ qkd-explainable-anomaly-detection/
 ├── README.md
 ├── requirements.txt
 ├── config.yaml                  # Simulation & ML hyperparameters
-├── app.py                       # Interactive Streamlit SOC dashboard (6 tabs, scenario-driven)
+├── run_dashboard.py             # Launches the dashboard (FastAPI + static frontend)
+├── backend/
+│   └── server.py                # FastAPI: simulate / explain / mdi / benchmarks endpoints
+├── frontend/                    # No-build animated UI (no npm, no bundler)
+│   ├── index.html               # Six views
+│   ├── styles.css               # Dark quantum-lab design system + motion
+│   ├── charts.js                # Animated SVG charts (draw-in, count-up, dot plots)
+│   ├── photons.js               # Canvas BB84 channel: Alice -> Eve -> Bob
+│   └── app.js                   # State, routing, playback, rendering
 ├── data/
 │   ├── raw/                     # Raw simulated session sequences (.parquet / .csv)
 │   └── processed/               # Sliding-window time-series dataset (.csv)
@@ -289,8 +297,8 @@ python scripts/10_multiseed_evaluation.py
 # 11. MDI-QKD curves, detector-attack demo, and trial datasets
 python scripts/11_mdi_protocol_comparison.py
 
-# 12. Run the interactive Streamlit SOC dashboard
-python -m streamlit run app.py
+# 12. Launch the dashboard at http://127.0.0.1:8000
+python run_dashboard.py
 
 # Run the test suite (32 tests)
 python -m pytest
@@ -423,10 +431,10 @@ Phase tampering leaves the Z-window bit errors **exactly** unchanged, because Z 
 
 ---
 
-## 10. Phase 2: Multi-Attack Classification & Streamlit SOC Dashboard
+## 10. Phase 2: Multi-Attack Classification & the SOC Dashboard
 *Reference Architecture:* *"Beyond the QBER Threshold: A Temporal QBER Based Machine Learning Framework for Multi Attack Detection in BB84 QKD"*
 
-Phase 2 scales the framework from binary anomaly detection to a **5-class multi-attack classification engine** powered by XGBoost and a real-time **Streamlit Security Operations Center (SOC)**.
+Phase 2 scales the framework from binary anomaly detection to a **5-class multi-attack classification engine** powered by XGBoost, with a real-time **Security Operations Center dashboard** (FastAPI + an animated no-build frontend).
 
 ### 10.1 The 5 Operational Regimes
 
@@ -485,54 +493,35 @@ Fake State is now the hardest class, which is physically right: blinding is *des
 
 With the leakage removed this ablation is far more informative than before, when every group scored a drop under 1%. **Basis-dependent features are now the most important group**, which matches the physics: separating Time-Shift and Fake State from a merely lossy benign channel requires comparing the two bases against each other, not tracking scalar QBER.
 
-### 10.5 What the label leakage was, and how it was fixed (task P2.1)
+### 10.4 Running the Security Operations Center dashboard
 
-**The defect.** `simulate_block_vectorized` hard-coded `base_channel_transmittance = 1.0` and `dark_count_rate = 1e-5` for every class, and each attack carried fixed strength constants. As a result `transmission_efficiency` collapsed onto a per-class constant:
-
-| Class | mean | std | min | max |
-|---|:---:|:---:|:---:|:---:|
-| 0 Normal | 1.000000 | **0.000000** | 1.000000 | 1.000000 |
-| 1 Fractional IR | 1.000000 | **0.000000** | 1.000000 | 1.000000 |
-| 2 PNS | 0.407803 | 0.291112 | 0.075605 | 0.983477 |
-| 3 Fake State | 0.646346 | 0.173570 | 0.470078 | 0.990215 |
-| 4 Time-Shift | 0.867116 | 0.068717 | 0.750840 | 0.996992 |
-
-A feature with **zero variance** across two entire classes is a perfect separator, and `key_generation_rate`, `loss_anomaly_index` and the `qber_loss_*` features all derive from it.
-
-**The fix.** `src/simulator/bb84_engine.py` now defines `NUISANCE_RANGES` and a `randomize_nuisance` flag. Each session draws its own baseline QBER, channel transmittance, dark-count rate, per-basis detector efficiency and per-attack strength parameters, from ranges that deliberately overlap so that a benign session can look like a weak attack:
-
-* benign base QBER down to 0.5%, overlapping the fake-state blinding residual (0.2-2.0%)
-* benign channel loss spanning 10-95%, overlapping PNS yield suppression
-* benign detectors carrying up to 30% basis-efficiency mismatch - every real receiver has some - overlapping weak Time-Shift
-* IR interception down to 5%, where the induced error is comparable to benign drift
-
-The same feature afterwards, overlapping across all five classes:
-
-| Class | mean | std | min | max |
-|---|:---:|:---:|:---:|:---:|
-| 0 Normal | 0.4306 | 0.2156 | 0.0924 | 0.8654 |
-| 1 Fractional IR | 0.4103 | 0.2246 | 0.1090 | 0.8525 |
-| 2 PNS | 0.1684 | 0.1360 | 0.0216 | 0.7555 |
-| 3 Fake State | 0.2534 | 0.1519 | 0.0405 | 0.7911 |
-| 4 Time-Shift | 0.4259 | 0.2121 | 0.0963 | 0.8441 |
-
-**Verification.** `scripts/10_multiseed_evaluation.py` writes `multiattack_leakage_audit.json`, recording the best single-feature one-vs-rest AUC per class. It fell from 0.97-0.998 before the fix to a mean maximum of **0.932 ± 0.014** after. Some separability is expected and legitimate - these are physically distinct attacks - but no class can be identified from a single feature any more. `tests/test_multiattack.py::test_nuisance_randomization_breaks_per_class_fingerprints` asserts the overlap, so the defect cannot silently return.
-
-**Note on the cross-validation figure.** `cv_multiattack_xgboost.json` reports 90.55% ± 0.15%, above the 86.29% held-out result, because that CV shuffles at *block* level and therefore splits overlapping windows from the same session across folds. The session-level held-out number is the one to quote.
-
-### 10.4 Running the Streamlit Security Operations Center (SOC)
 ```bash
-python -m streamlit run app.py
+python run_dashboard.py            # http://127.0.0.1:8000
+python run_dashboard.py --reload   # auto-reload while editing
 ```
-Six tabs, scenario-driven:
+
+The dashboard is a **FastAPI backend plus a no-build static frontend** - no Streamlit, no npm, no bundler. `backend/server.py` exposes the simulator, the trained model, SHAP attribution and the MDI-QKD comparison as JSON; `frontend/` is plain HTML, CSS and JavaScript with hand-written SVG charts and a canvas animation.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/meta` | class metadata, scenarios, feature groups, nuisance ranges, headline metrics |
+| `GET /api/trial/{cls}` | replay a pre-generated trial session (instant) |
+| `POST /api/simulate` | run a fresh BB84 session with chosen channel, length, onset and seed |
+| `GET /api/explain` | SHAP attribution for one block of a session |
+| `GET /api/mdi` | detector-attack sweep and key-rate curves |
+| `GET /api/benchmarks` | the corrected metric tables |
+
+**Six views:**
 * **Start Here** - the problem in plain language, the corrected headline numbers, and the protocol decision table.
-* **Live Monitor** - six presets, each chosen to expose a different blind spot of the 11% rule (clean baseline, sub-threshold stealth, zero-QBER PNS, detector blinding where the QBER *drops*, time-shift basis split, and an attack on a drifting free-space link). Replays pre-generated trial sessions instantly or simulates live.
-* **Why? (SHAP)** - per-block attribution with group-level roll-up and a plain-language reading, including when the block was misclassified.
-* **MDI-QKD** - interactive sweep of how much of the relay Eve controls, side by side for BB84 and MDI-QKD, plus the key-rate curves.
-* **Benchmarks** - corrected metrics, the leakage story, and the ablation.
-* **Threat Atlas** - per-class physics, the Phase 3 source-side attacks, the 63 features, the nuisance ranges, and the limitations.
+* **Live Monitor** - six scenario presets, each chosen to expose a different blind spot of the 11% rule (clean baseline, sub-threshold stealth, zero-QBER PNS, detector blinding where the QBER *drops*, time-shift basis split, and an attack on a drifting free-space link). An animated canvas shows photons travelling Alice to Bob with polarization glyphs; when the attack is live, Eve's node pulses and intercepted photons change colour. Block-by-block playback with a scrubber drives the charts, the KPI tiles and the classifier belief bars together.
+* **Why? (SHAP)** - per-block diverging attribution, group-level roll-up, plain-language reading, and an explicit flag when the block was misclassified.
+* **MDI-QKD** - a slider for how much of the relay Eve controls, with BB84 and MDI-QKD side by side, plus the monitor and key-rate curves.
+* **Benchmarks** - corrected metrics, per-seed stability, the leakage story, per-class tables and the ablation.
+* **Threat Atlas** - per-class physics, the Phase 3 source-side attacks, the 63 features, the nuisance ranges and the limitations.
 
-Trial sessions are generated by `scripts/11_mdi_protocol_comparison.py` into `data/processed/trial_sessions/` and carry the model's per-block predictions, so the dashboard replays them with no simulation cost. They are drawn from the same leakage-free distribution the model was trained on - the dashboard passes `randomize_nuisance=True`, which the earlier version did not, so its live sessions no longer come from a different distribution than the model saw in training.
+Motion is used to carry meaning rather than decorate: chart paths draw in, the live point pulses, probability bars animate between blocks, and the monitor panel takes on a pulsing red border the moment the classifier leaves the Normal class. Everything collapses to a static render under `prefers-reduced-motion`.
+
+Trial sessions come from `scripts/11_mdi_protocol_comparison.py` and carry per-block predictions, so replay costs nothing. Live simulation passes `randomize_nuisance=True`, so it draws from the same leakage-free distribution the model was trained on.
 
 ### 10.5 What the label leakage was, and how it was fixed (task P2.1)
 
@@ -568,15 +557,6 @@ The same feature afterwards, overlapping across all five classes:
 **Verification.** `scripts/10_multiseed_evaluation.py` writes `multiattack_leakage_audit.json`, recording the best single-feature one-vs-rest AUC per class. It fell from 0.97-0.998 before the fix to a mean maximum of **0.932 ± 0.014** after. Some separability is expected and legitimate - these are physically distinct attacks - but no class can be identified from a single feature any more. `tests/test_multiattack.py::test_nuisance_randomization_breaks_per_class_fingerprints` asserts the overlap, so the defect cannot silently return.
 
 **Note on the cross-validation figure.** `cv_multiattack_xgboost.json` reports 90.55% ± 0.15%, above the 86.29% held-out result, because that CV shuffles at *block* level and therefore splits overlapping windows from the same session across folds. The session-level held-out number is the one to quote.
-
-### 10.4 Running the Streamlit Security Operations Center (SOC)
-```bash
-streamlit run app.py
-```
-* **Real-Time Temporal Monitor:** Live streaming QBER chart with the 11% threshold line and dual-basis ($Q_Z$ vs $Q_X$) error tracker.
-* **XGBoost Threat HUD:** Live 5-class confidence bars, detection latency counter ($\Delta T$), and automated key-abort simulation.
-* **SHAP Explainability Card:** On-the-fly waterfall plot showing exact physics feature contributions.
-* **Paper Visualizer:** Embedded 300 DPI confusion matrix, ROC curves, and ablation tables.
 
 ---
 

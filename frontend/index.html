@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QKD Security Operations Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;600;650;750&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#04121a" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6z"/>
+      </svg>
+    </div>
+    <div>
+      <h1>QKD Security Operations Center</h1>
+      <p class="sub">Temporal-QBER anomaly detection for BB84 &middot; explainable &middot;
+         with MDI-QKD as the structural answer to detector attacks</p>
+    </div>
+    <div class="header-pill"><span class="dot" id="healthDot"></span><span id="healthTxt">connecting</span></div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-v="overview"><span class="ic">◈</span>Start Here</button>
+    <button class="tab" data-v="monitor"><span class="ic">◉</span>Live Monitor</button>
+    <button class="tab" data-v="explain"><span class="ic">◎</span>Why? (SHAP)</button>
+    <button class="tab" data-v="mdi"><span class="ic">⬡</span>MDI-QKD</button>
+    <button class="tab" data-v="bench"><span class="ic">▤</span>Benchmarks</button>
+    <button class="tab" data-v="atlas"><span class="ic">✦</span>Threat Atlas</button>
+  </nav>
+
+  <!-- ================= OVERVIEW ================= -->
+  <section class="view active" id="v-overview">
+    <div class="grid g-side">
+      <div class="grid stagger" style="gap:12px">
+        <div class="stat info"><div class="bar"></div><div class="k">Multi-class accuracy</div>
+          <div class="v" data-count="85.63" data-suffix="%">—</div><div class="s">5 seeds, session-level split</div></div>
+        <div class="stat good"><div class="bar"></div><div class="k">Attacks this model misses</div>
+          <div class="v" data-count="11.5" data-suffix="%">—</div><div class="s">the 11% rule misses 99.4%</div></div>
+        <div class="stat warn"><div class="bar"></div><div class="k">Attacks no protocol stops</div>
+          <div class="v" data-count="4" data-dec="0">—</div><div class="s">source-side light injection</div></div>
+      </div>
+
+      <div class="grid stagger" style="gap:16px">
+        <div class="panel glow">
+          <h3>What problem is this solving?</h3>
+          <p class="lead">BB84 decides whether someone is listening by watching a single number: the
+            <b>Quantum Bit Error Rate</b>. If it crosses about <b>11%</b>, the link aborts.</p>
+          <p class="muted">That rule has a hole in it. An attacker who intercepts only <i>part</i> of the
+            traffic raises the QBER to roughly 5&ndash;9% &mdash; real leakage, no alarm. And several attacks
+            are worse than silent: <b>detector blinding actually lowers the QBER</b>, because the attacker
+            replaces noisy quantum detection with clean classical pulses.</p>
+          <p class="muted">This project replaces the single-number test with a <b>temporal</b> one: it watches
+            how the error rate behaves over time across 63 physics-derived features, and uses XGBoost to name
+            which of five regimes the link is in. Every alarm carries a SHAP explanation.</p>
+          <div class="banner info" style="margin-top:14px"><span class="em">◆</span>
+            <div><b>The honest headline.</b> The fixed 11% threshold misses <b>99.4%</b> of attack blocks.
+            The temporal model misses <b>11.5%</b> &mdash; about a nine-fold reduction in false negatives,
+            measured <i>after</i> removing a label-leakage bug that had inflated accuracy to 99.9%.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Which protocol should actually be used?</h3>
+          <p class="cap">The attacks sort by <b>where they live</b>, and that decides everything.</p>
+          <table>
+            <thead><tr><th>Where it lives</th><th>Examples</th><th>Fixed by MDI-QKD?</th></tr></thead>
+            <tbody>
+              <tr><td><b>Detector side</b></td><td class="muted">blinding / faked-state, efficiency mismatch, time-shift, backflash</td><td class="good">Yes &mdash; structurally</td></tr>
+              <tr><td><b>Channel</b></td><td class="muted">intercept-resend, beam splitting, PNS</td><td class="hi">Detectable / decoy states</td></tr>
+              <tr><td><b>Source side</b></td><td class="muted">Trojan-horse, laser seeding, photorefraction, laser damage</td><td class="bad">No &mdash; nor does anything else</td></tr>
+            </tbody>
+          </table>
+          <details><summary>Why no protocol closes the source side</summary>
+            <div class="body">Every security proof &mdash; BB84, decoy-state, MDI, even device-independent QKD
+              &mdash; assumes no unwanted light leaves Alice&rsquo;s and Bob&rsquo;s laboratories. Trojan-horse
+              and the light-injection family attack that premise from <i>outside</i> the protocol. Only hardware
+              countermeasures plus runtime monitoring help, which is exactly where the ML layer earns its place.</div>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MONITOR ================= -->
+  <section class="view" id="v-monitor">
+    <div class="grid g-side">
+      <div>
+        <div class="panel" style="padding:17px 18px">
+          <h3>Scenario</h3>
+          <p class="cap">Each one breaks the 11% rule in a different way.</p>
+          <div id="scnList"></div>
+
+          <div class="control" style="margin-top:18px">
+            <label>Data source</label>
+            <div class="seg" id="srcSeg">
+              <button class="on" data-src="trial">Replay trial</button>
+              <button data-src="live">Simulate live</button>
+            </div>
+          </div>
+
+          <div id="liveOpts" style="display:none">
+            <div class="control"><label>Channel</label>
+              <select id="inChannel"><option value="fiber">Fiber (0.2 dB/km)</option>
+              <option value="free_space">Free-space (turbulent)</option></select></div>
+            <div class="control"><label>Blocks <b id="lblBlocks">150</b></label>
+              <input type="range" id="inBlocks" min="100" max="250" value="150" step="10"></div>
+            <div class="control"><label>Attack onset <b id="lblOnset">76</b></label>
+              <input type="range" id="inOnset" min="55" max="200" value="76" step="1"></div>
+            <div class="control"><label>Seed</label><input type="number" id="inSeed" value="42" min="0"></div>
+          </div>
+
+          <button class="btn" id="btnRun">▶ Run scenario</button>
+        </div>
+      </div>
+
+      <div class="grid" style="gap:16px" id="monBody">
+        <div class="panel glow">
+          <h3 id="scnTitle">Clean baseline</h3>
+          <p class="cap" id="scnHead">Establish what normal looks like.</p>
+          <div class="stage">
+            <canvas id="photons"></canvas>
+            <div class="legend">
+              <span><i style="background:#22d3ee"></i>photon</span>
+              <span><i style="background:#f43f5e"></i>intercepted</span>
+              <span><i style="background:#34d399"></i>sifted key bit</span>
+              <span><i style="background:#64748b"></i>lost / discarded</span>
+            </div>
+          </div>
+          <div class="playbar">
+            <button class="btn ghost" id="btnPlay" style="width:auto">⏸ Pause</button>
+            <div class="tl"><input type="range" id="scrub" min="0" max="100" value="100"></div>
+            <div class="lbl" id="scrubLbl">block —</div>
+          </div>
+          <div class="banner warn" style="margin-top:13px"><span class="em">◎</span>
+            <div><b>What to look for:</b> <span id="scnLook"></span></div></div>
+        </div>
+
+        <div class="grid g4 stagger" id="kpis"></div>
+        <div class="grid g2" style="gap:16px"><div id="verdictA"></div><div id="verdictB"></div></div>
+
+        <div class="grid g2" style="gap:16px">
+          <div class="panel"><h3>Temporal QBER vs the static threshold</h3>
+            <p class="cap">The red line is the 11% abort rule. Amber is attack onset, green is the model alarm.</p>
+            <div id="chQber"></div></div>
+          <div class="panel"><h3>Dual-basis tracking</h3>
+            <p class="cap">Separation between Q<sub>Z</sub> and Q<sub>X</sub> means time-shift.</p>
+            <div id="chBasis"></div></div>
+        </div>
+
+        <div class="grid g2" style="gap:16px">
+          <div class="panel"><h3>Transmission efficiency</h3>
+            <p class="cap">The yield channel &mdash; where PNS hides.</p>
+            <div id="chEff"></div></div>
+          <div class="panel"><h3>Live classifier belief</h3>
+            <p class="cap">Probability assigned to each regime at the current block.</p>
+            <div id="probBars"></div></div>
+        </div>
+
+        <div class="panel"><h3>Scenario physics</h3><div id="scnPhysics"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= EXPLAIN ================= -->
+  <section class="view" id="v-explain">
+    <div class="panel glow">
+      <h3>Why did the model say that?</h3>
+      <p class="cap">An autonomous abort has to be auditable. Pick any block and see which physical
+        quantity drove the call.</p>
+      <div id="explainCtl"></div>
+    </div>
+    <div class="grid g-side" style="margin-top:16px">
+      <div class="grid" style="gap:12px" id="explainMeta"></div>
+      <div class="grid" style="gap:16px">
+        <div class="panel"><h3>Feature attribution</h3>
+          <p class="cap">Rose pushes toward the predicted class, blue pushes away.</p>
+          <div id="chShap"></div></div>
+        <div class="panel"><h3>Which family of physics carried the decision?</h3>
+          <div id="shapGroups"></div></div>
+        <div class="panel"><h3>In plain language</h3><div id="shapWords"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MDI ================= -->
+  <section class="view" id="v-mdi">
+    <div class="panel glow">
+      <h3>MDI-QKD: making the detectors untrusted</h3>
+      <p class="lead">Detector blinding beats BB84 for one structural reason: <b>Eve controls the device
+        that also computes the security check.</b> She fakes the key bits <i>and</i> the monitor meant to
+        catch her.</p>
+      <p class="muted">Measurement-Device-Independent QKD removes that. Alice and Bob both become
+        <i>transmitters</i>; an untrusted relay, Charlie, performs a Bell-state measurement and announces the
+        result publicly. Eve is <b>allowed</b> to be Charlie. She still fails, because the monitor &mdash; the
+        X-basis phase error &mdash; is computed from states Alice and Bob prepared themselves. She cannot forge
+        what she never saw.</p>
+      <div class="control" style="margin-top:16px;max-width:560px">
+        <label>Fraction of the measurement device Eve controls &mdash; <b id="lblCtrl">100%</b></label>
+        <input type="range" id="inCtrl" min="0" max="100" value="100" step="5">
+      </div>
+    </div>
+
+    <div class="grid g2" style="gap:16px;margin-top:16px">
+      <div class="panel" id="panelBB84"><h3>BB84 with blinded detectors</h3>
+        <p class="cap">The attack this project exists because of.</p><div id="mdiBB84"></div></div>
+      <div class="panel" id="panelMDI"><h3>MDI-QKD with Eve as Charlie</h3>
+        <p class="cap">Same adversary, same power, different outcome.</p><div id="mdiMDI"></div></div>
+    </div>
+
+    <div class="grid g2" style="gap:16px;margin-top:16px">
+      <div class="panel"><h3>The monitor Eve cannot forge</h3>
+        <p class="cap">Security signal vs how much of the relay she owns.</p><div id="chMdiMon"></div></div>
+      <div class="panel"><h3>Key rate vs distance</h3>
+        <p class="cap">MDI-QKD buys security, not reach. Log scale.</p><div id="chMdiRate"></div></div>
+    </div>
+
+    <details style="margin-top:16px"><summary>What MDI-QKD does NOT fix</summary>
+      <div class="body">MDI-QKD closes the detector side completely and does nothing for the source side:
+        Trojan-horse probing, laser seeding, induced photorefraction in lithium-niobate modulators, and
+        laser-damage attacks that degrade an isolator to enable the others. Those violate the
+        <b>sealed-laboratory assumption</b> every proof relies on, device-independent QKD included. That is
+        exactly the Phase 3 proposal: keep MDI-QKD as the backbone, and point the temporal ML at source-side
+        telemetry, because those attacks have slow, drifting, inherently temporal signatures.</div>
+    </details>
+  </section>
+
+  <!-- ================= BENCH ================= -->
+  <section class="view" id="v-bench">
+    <div class="grid g4 stagger" id="benchKpis"></div>
+    <div class="banner bad" style="margin-top:16px"><span class="em">⚠</span>
+      <div><b>What changed, and why these numbers deserve more trust than the old ones.</b>
+      The previously reported 99.93% was an artefact. Every class ran at a fixed channel transmittance of 1.0,
+      so <code>transmission_efficiency</code> was <i>exactly 1.000 with zero variance</i> for the Normal and
+      Fractional-IR classes &mdash; a perfect giveaway. Each attack also had hard-coded strength constants.
+      Sessions now draw baseline QBER, channel loss, dark counts, detector basis mismatch and attack strength
+      from <b>overlapping</b> ranges, so a benign link can look like a weak attack. Accuracy fell to 85.6%,
+      and that is the number worth reporting.</div></div>
+
+    <h2 class="sec">Per-seed stability</h2>
+    <div class="panel"><div id="chSeeds"></div></div>
+
+    <h2 class="sec">Per class</h2>
+    <div class="grid g2" style="gap:16px">
+      <div class="panel"><h3>Overall</h3><div id="tblOverall"></div></div>
+      <div class="panel"><h3>Per class</h3><div id="tblPerClass"></div></div>
+    </div>
+    <p class="muted" style="margin-top:12px">Fake State is now the hardest class, which is physically right:
+      blinding is <i>designed</i> to hold the error rate at baseline, and benign sessions may run as low as
+      0.5% QBER. Time-Shift stays easiest &mdash; its basis asymmetry is a genuine two-channel signature.</p>
+
+    <h2 class="sec">Which feature families matter?</h2>
+    <div class="panel"><div id="chAbl"></div>
+      <p class="muted" style="margin-top:10px">With the leakage removed, <b>basis-dependent</b> features are the
+      most important group (&minus;7.2%), then channel interaction (&minus;5.4%). Before the fix every group
+      scored under 1%, because one leaked feature carried the whole decision.</p></div>
+
+    <details style="margin-top:16px"><summary>A second, milder leak worth knowing about</summary>
+      <div class="body">The stored cross-validation figure (~90.6%) sits above the 86.3% held-out result because
+      that CV shuffles at <b>block</b> level and so splits overlapping windows from one session across folds.
+      The session-level held-out number is the one to quote.</div></details>
+  </section>
+
+  <!-- ================= ATLAS ================= -->
+  <section class="view" id="v-atlas">
+    <div class="panel glow"><h3>The five simulated regimes</h3>
+      <p class="cap">Select one to read its physics.</p>
+      <div class="chips" id="atlasPick" style="margin-bottom:16px"></div>
+      <div id="atlasBody"></div></div>
+
+    <h2 class="sec">Attacks not yet simulated (Phase 3)</h2>
+    <div class="panel"><table>
+      <thead><tr><th>Attack</th><th>Mechanism</th><th>Temporal signature to hunt</th></tr></thead>
+      <tbody>
+        <tr><td class="hi">Trojan-horse</td><td class="muted">Eve probes Alice&rsquo;s transmitter and reads back-reflections</td><td class="muted">Watchdog photodiode power, phase-locked to the modulation frame</td></tr>
+        <tr><td class="hi">Laser seeding</td><td class="muted">Injected light seeds Alice&rsquo;s laser cavity</td><td class="muted">Step change in side-mode suppression ratio, RIN, wavelength</td></tr>
+        <tr><td class="hi">Induced photorefraction</td><td class="muted">Short-wavelength light builds space charge in the LiNbO₃ modulator</td><td class="muted"><b>Slow saturating drift</b> of modulator bias over minutes&ndash;hours</td></tr>
+        <tr><td class="hi">Laser damage</td><td class="muted">High-power laser permanently degrades an isolator</td><td class="muted"><b>Monotonic, irreversible</b> isolation loss &mdash; a precursor enabling the others</td></tr>
+      </tbody></table>
+      <p class="muted" style="margin-top:12px">These are the 2023&ndash;2026 frontier, and crucially they are
+        <b>not covered by existing security proofs</b>. They are also the natural target for temporal ML.</p></div>
+
+    <h2 class="sec">The 63 features</h2>
+    <div class="grid g2" style="gap:12px" id="featGroups"></div>
+
+    <h2 class="sec">Per-session randomization</h2>
+    <div class="panel"><p class="cap">These ranges deliberately overlap across classes, so a benign session
+      can look like a weak attack. This is what killed the label leakage.</p><div id="tblNuisance"></div></div>
+
+    <div class="banner warn" style="margin-top:22px"><span class="em">⚠</span>
+      <div><b>Limitations.</b> Everything here is simulated &mdash; no hardware, no measurement from a physical
+      QKD system. The fake-state, time-shift and PNS models reproduce the qualitative signature of each attack
+      rather than deriving it from a full device model. MDI-QKD key rates are asymptotic, use the infinite-decoy
+      limit, and Y<sub>11</sub>/e<sub>11</sub> are leading-order. Free-space drift is a log-normal AR(1) process
+      on the QBER, not a turbulence model. Phase 3 WS-2 to WS-4 are a specification, not a result.</div></div>
+  </section>
+
+</div>
+
+<script src="/static/charts.js"></script>
+<script src="/static/photons.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
