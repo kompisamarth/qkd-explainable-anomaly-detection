@@ -100,8 +100,8 @@ The Phase 2 classifier reports 99.93% accuracy (Section 10.3). That number is **
 
 | # | Task | Rationale |
 |---|---|---|
-| P2.1 | **Overlap the nuisance ranges across classes.** Draw per-session baseline QBER, detector efficiency, channel loss and misalignment from *overlapping* distributions instead of per-class constants. | Each attack class currently carries a hand-coded, near-deterministic fingerprint (fake-state forces effective noise to `min(0.005, ·)`; time-shift hard-codes η_Z = 1.0 vs η_X = 0.4). The model is partly learning the simulator, not the physics. |
-| P2.2 | **Re-report accuracy as mean ± std over ≥ 5 seeds.** Expect a substantial, honest drop. | A single-seed 99.93% on synthetic multi-class data is a red flag reviewers will press on. |
+| P2.1 | **DONE** - **Overlap the nuisance ranges across classes.** Draw per-session baseline QBER, detector efficiency, channel loss and misalignment from *overlapping* distributions instead of per-class constants. | Each attack class currently carries a hand-coded, near-deterministic fingerprint (fake-state forces effective noise to `min(0.005, ·)`; time-shift hard-codes η_Z = 1.0 vs η_X = 0.4). The model is partly learning the simulator, not the physics. |
+| P2.2 | **DONE** - **Re-report accuracy as mean ± std over ≥ 5 seeds.** Accuracy fell from 99.93% to 85.63% ± 1.36% (Section 10.3). | A single-seed 99.93% on synthetic multi-class data is a red flag reviewers will press on. |
 | P2.3 | **Add detection latency ΔT and FPR to the 5-class evaluation.** | Currently only accuracy/F1 are reported for Phase 2, losing the operational framing that makes Phase 1 strong. |
 | P2.4 | **Run the 5-class model cross-channel (fiber → free-space).** | Section 9.3 is the most intellectually honest result in the repo; Phase 2 has no equivalent. |
 
@@ -194,8 +194,9 @@ qkd-explainable-anomaly-detection/
 │   ├── 06_generate_multiattack_dataset.py  # Phase 2: 5-class multi-attack dataset generator
 │   ├── 07_train_multiattack_classifiers.py # Phase 2: Train & tune multi-class XGBoost
 │   ├── 08_evaluate_multiattack.py          # Phase 2: Benchmark metrics, confusion matrix & ROC
-│   └── 09_explain_and_ablation.py          # Phase 2: SHAP ranking & feature group ablation
-└── tests/                       # pytest suite: 23 tests (BB84, Twin-Field, 5-class attacks)
+│   ├── 09_explain_and_ablation.py          # Phase 2: SHAP ranking & feature group ablation
+│   └── 10_multiseed_evaluation.py          # P2.1: leakage audit + multi-seed mean/std benchmarks
+└── tests/                       # pytest suite: 24 tests (BB84, Twin-Field, 5-class attacks, leakage guard)
 ```
 
 Entries marked `[Phase 3]` are specified in Section 3 and not yet implemented.
@@ -246,10 +247,13 @@ python scripts/08_evaluate_multiattack.py
 # 9. Phase 2: SHAP explainability & feature group ablation
 python scripts/09_explain_and_ablation.py
 
-# 10. Run the interactive Streamlit SOC dashboard
+# 10. P2.1: leakage audit and multi-seed benchmarks (mean +/- std over 5 seeds)
+python scripts/10_multiseed_evaluation.py
+
+# 11. Run the interactive Streamlit SOC dashboard
 python -m streamlit run app.py
 
-# Run the test suite (23 tests)
+# Run the test suite (24 tests)
 python -m pytest
 ```
 
@@ -403,24 +407,79 @@ Extracted over causal backward-looking sliding windows ($W=50$) with zero future
 4. **Basis-Dependent (12):** `qber_rectilinear` ($q_Z$), `qber_diagonal` ($q_X$), `basis_asymmetry`, `basis_ratio`, `basis_burst_energy_z`, `basis_burst_energy_x`, `basis_variance_ratio`, `basis_cross_correlation`, `basis_skewness_diff`, `basis_kurtosis_diff`, `sift_ratio_z`, `sift_ratio_x`.
 5. **Channel Interaction & Multi-Scale (22):** `key_generation_rate`, `transmission_efficiency`, `qber_loss_interaction`, `qber_loss_product`, `loss_anomaly_index`, `dark_count_ratio`, nested multi-scale statistics (`W=10, 25, 50` mean, std, fano, drift), `error_clustering_coefficient`, `loss_gradient`, `efficiency_entropy`, `qber_stability_index`.
 
-### 10.3 Experimental Benchmarks (101,000 Test Blocks)
+### 10.3 Experimental Benchmarks (leakage-free, 5 independent seeds)
 
-| Detector | Accuracy | Macro-F1 | Precision | False Negative Rate (FNR) |
+The originally committed Phase 2 figure was 99.93% accuracy. **That number was an artefact of the simulator, not a generalization estimate**, and it has been corrected. Section 10.5 documents exactly what was wrong and how it was fixed.
+
+Headline result (`scripts/10_multiseed_evaluation.py`, 5 seeds x 2,000 sessions each, session-level 80/20 split so that train and test never share a session):
+
+| Detector | Accuracy | Macro-F1 | FNR (attack vs normal) | FPR |
 |---|:---:|:---:|:---:|:---:|
-| **Conventional Fixed 11% QBER Threshold** | 40.59% | 0.2887 | 0.2030 | **100.0%** (Missed all stealthy attacks) |
-| **Proposed XGBoost Multi-Attack Framework** | **99.93%** | **0.9994** | **0.9995** | **0.075%** |
+| **Conventional Fixed 11% QBER Threshold** | - | - | **99.38% ± 0.31%** | 0.00% |
+| **Proposed XGBoost Multi-Attack Framework** | **85.63% ± 1.36%** | **0.8470 ± 0.0144** | **11.53% ± 1.11%** | 7.68% ± 1.53% |
 
-> **⚠ Known limitation — these numbers overstate generalization.** Each attack class is currently generated with a near-deterministic, hand-coded fingerprint (for example, fake-state forces the effective channel noise to `min(0.005, ·)`, and time-shift hard-codes a fixed Z/X efficiency ratio), and the nuisance parameters do not overlap across classes. The classifier is therefore partly learning the *simulator's* signatures rather than attack physics. Task **P2.1** in the Phase 3 roadmap (Section 3.0) overlaps the nuisance ranges and re-reports these figures with seed variance; the accuracy is expected to fall substantially, and that corrected figure is the one that should be submitted.
+Single-run confirmation on the full canonical dataset (1,000 sessions/class, scripts 06-08): accuracy 86.29%, macro-F1 0.8556, FNR 11.94%, against 40.81% / 0.2927 / 99.64% for the fixed threshold.
 
-#### Per-Class Performance Breakdown (`multiattack_per_class_f1.csv`)
-* **Normal Channel:** Precision 99.89% | Recall 99.96% | F1 **0.9992**
-* **Fractional IR:** Precision 99.88% | Recall 99.70% | F1 **0.9979**
-* **PNS Attack:** Precision 99.99% | Recall 99.99% | F1 **0.9999**
-* **Fake State:** Precision 99.99% | Recall 99.99% | F1 **0.9999**
-* **Time-Shift:** Precision 100.00% | Recall 99.99% | F1 **1.0000**
+The headline claim survives the correction, and is the stronger one for being honest: **the fixed 11% threshold misses 99.4% of attack blocks while the temporal model misses 11.5%** - roughly a nine-fold reduction in false negatives, with no class trivially identifiable.
 
-#### Leave-One-Group-Out Feature Ablation Study (`fig_ablation_5class.png`)
-Removing **Channel Interaction** features caused the largest drop (**-0.89%**), followed by **Basis-Dependent** and **Burst/Spectral** features, confirming that multi-attack discrimination requires channel and basis interaction metrics beyond scalar QBER.
+#### Per-class F1 (mean ± std over 5 seeds)
+
+| Class | F1 |
+|---|:---:|
+| Normal Channel | 0.8826 ± 0.0104 |
+| Fractional IR | 0.8746 ± 0.0283 |
+| PNS Attack | 0.8021 ± 0.0235 |
+| Fake State | 0.7417 ± 0.0113 |
+| Time-Shift | 0.9339 ± 0.0181 |
+
+Fake State is now the hardest class, which is physically right: blinding is *designed* to hold the error rate near baseline, and once benign sessions may run at QBER as low as 0.5% it no longer stands out. Time-Shift stays easiest, because its basis asymmetry is a genuine two-channel signature rather than a simulator artefact.
+
+#### Leave-one-group-out feature ablation (`fig_ablation_5class.png`)
+
+| Group removed | Ablated accuracy | Drop |
+|---|:---:|:---:|
+| Basis-Dependent (12) | 79.12% | **-7.16%** |
+| Channel Interaction (22) | 80.93% | **-5.36%** |
+| Burst & Instability (10) | 85.89% | -0.39% |
+| Spectral & Temporal (12) | 85.91% | -0.37% |
+| Statistical (7) | 85.96% | -0.33% |
+
+With the leakage removed this ablation is far more informative than before, when every group scored a drop under 1%. **Basis-dependent features are now the most important group**, which matches the physics: separating Time-Shift and Fake State from a merely lossy benign channel requires comparing the two bases against each other, not tracking scalar QBER.
+
+### 10.5 What the label leakage was, and how it was fixed (task P2.1)
+
+**The defect.** `simulate_block_vectorized` hard-coded `base_channel_transmittance = 1.0` and `dark_count_rate = 1e-5` for every class, and each attack carried fixed strength constants. As a result `transmission_efficiency` collapsed onto a per-class constant:
+
+| Class | mean | std | min | max |
+|---|:---:|:---:|:---:|:---:|
+| 0 Normal | 1.000000 | **0.000000** | 1.000000 | 1.000000 |
+| 1 Fractional IR | 1.000000 | **0.000000** | 1.000000 | 1.000000 |
+| 2 PNS | 0.407803 | 0.291112 | 0.075605 | 0.983477 |
+| 3 Fake State | 0.646346 | 0.173570 | 0.470078 | 0.990215 |
+| 4 Time-Shift | 0.867116 | 0.068717 | 0.750840 | 0.996992 |
+
+A feature with **zero variance** across two entire classes is a perfect separator, and `key_generation_rate`, `loss_anomaly_index` and the `qber_loss_*` features all derive from it.
+
+**The fix.** `src/simulator/bb84_engine.py` now defines `NUISANCE_RANGES` and a `randomize_nuisance` flag. Each session draws its own baseline QBER, channel transmittance, dark-count rate, per-basis detector efficiency and per-attack strength parameters, from ranges that deliberately overlap so that a benign session can look like a weak attack:
+
+* benign base QBER down to 0.5%, overlapping the fake-state blinding residual (0.2-2.0%)
+* benign channel loss spanning 10-95%, overlapping PNS yield suppression
+* benign detectors carrying up to 30% basis-efficiency mismatch - every real receiver has some - overlapping weak Time-Shift
+* IR interception down to 5%, where the induced error is comparable to benign drift
+
+The same feature afterwards, overlapping across all five classes:
+
+| Class | mean | std | min | max |
+|---|:---:|:---:|:---:|:---:|
+| 0 Normal | 0.4306 | 0.2156 | 0.0924 | 0.8654 |
+| 1 Fractional IR | 0.4103 | 0.2246 | 0.1090 | 0.8525 |
+| 2 PNS | 0.1684 | 0.1360 | 0.0216 | 0.7555 |
+| 3 Fake State | 0.2534 | 0.1519 | 0.0405 | 0.7911 |
+| 4 Time-Shift | 0.4259 | 0.2121 | 0.0963 | 0.8441 |
+
+**Verification.** `scripts/10_multiseed_evaluation.py` writes `multiattack_leakage_audit.json`, recording the best single-feature one-vs-rest AUC per class. It fell from 0.97-0.998 before the fix to a mean maximum of **0.932 ± 0.014** after. Some separability is expected and legitimate - these are physically distinct attacks - but no class can be identified from a single feature any more. `tests/test_multiattack.py::test_nuisance_randomization_breaks_per_class_fingerprints` asserts the overlap, so the defect cannot silently return.
+
+**Note on the cross-validation figure.** `cv_multiattack_xgboost.json` reports 90.55% ± 0.15%, above the 86.29% held-out result, because that CV shuffles at *block* level and therefore splits overlapping windows from the same session across folds. The session-level held-out number is the one to quote.
 
 ### 10.4 Running the Streamlit Security Operations Center (SOC)
 ```bash
@@ -447,7 +506,7 @@ Given discrete error sequence $E = [e_1, e_2, \dots, e_t]$, feature vectors $x_t
 ## 12. Limitations
 
 * **Everything is simulated.** There is no hardware in this project, and no measurement from a physical QKD system.
-* **Phase 2 accuracy overstates generalization** — see the caveat in Section 10.3 and task P2.1.
+* **Phase 2 accuracy has been corrected** from 99.93% to 85.63% ± 1.36% after removing label leakage (Section 10.5). Residual single-feature separability is about 0.93 AUC, reflecting genuine physical differences between the attacks rather than simulator artefacts.
 * **Attack models are phenomenological.** The fake-state, time-shift and PNS models reproduce the qualitative signature of each attack rather than deriving it from a full device model. The TF-QKD phase-tampering attack is likewise phenomenological, not an optimal collective attack.
 * **Key rates are asymptotic** — no finite-key corrections and no AOPP.
 * **Free-space drift** is a log-normal AR(1) process on the QBER, not a full turbulence model.

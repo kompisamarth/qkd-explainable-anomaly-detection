@@ -70,17 +70,18 @@ def main():
                 session_id = session_counter + 1
                 session_counter += 1
 
-                # Slight background noise jitter to prevent label leakage
-                base_qber = float(np.clip(rng.normal(0.03, 0.003), 0.015, 0.045))
-
+                # Per-session nuisance parameters (base QBER, channel transmittance,
+                # dark counts, per-basis detector efficiency and each attack's own
+                # strength) are drawn inside the simulator from the deliberately
+                # overlapping NUISANCE_RANGES. See README section 3.0, task P2.1.
                 seq = sim.simulate_session(
                     session_id=session_id,
                     target_attack_class=class_id,
                     channel_type="fiber",
                     blocks_per_session=blocks_per_session,
                     attack_start_block=attack_start_block,
-                    fiber_base_qber=base_qber,
                     attack_mode="multiattack",
+                    randomize_nuisance=True,
                 )
 
                 df_session = extractor.extract_from_session(seq)

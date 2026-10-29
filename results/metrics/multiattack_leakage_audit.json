@@ -1,0 +1,81 @@
+{
+  "nuisance_ranges": {
+    "base_qber": [
+      0.005,
+      0.06
+    ],
+    "channel_transmittance": [
+      0.1,
+      0.95
+    ],
+    "log10_dark_count": [
+      -6.0,
+      -4.3
+    ],
+    "det_eff_z": [
+      0.8,
+      1.0
+    ],
+    "det_eff_x_ratio": [
+      0.7,
+      1.0
+    ],
+    "ir_p_eve": [
+      0.05,
+      0.3
+    ],
+    "pns_mu": [
+      0.2,
+      0.45
+    ],
+    "pns_single_pass": [
+      0.2,
+      0.6
+    ],
+    "blinding_eff": [
+      0.7,
+      0.98
+    ],
+    "blinding_residual_qber": [
+      0.002,
+      0.02
+    ],
+    "ts_shift_prob": [
+      0.3,
+      0.85
+    ],
+    "ts_eff_x_ratio": [
+      0.3,
+      0.9
+    ],
+    "ts_x_misalign": [
+      0.04,
+      0.16
+    ]
+  },
+  "per_seed_max_single_feature_auc": [
+    0.9418905087209303,
+    0.9442065600775194,
+    0.9129250169573644,
+    0.9390372020348837,
+    0.9199276986434108
+  ],
+  "last_seed_audit": {
+    "1": {
+      "best_auc": 0.8677930910852713,
+      "feature": "multiscale_mean_w10"
+    },
+    "2": {
+      "best_auc": 0.8924383163759689,
+      "feature": "multiscale_fano_w25"
+    },
+    "3": {
+      "best_auc": 0.8810877156007753,
+      "feature": "multiscale_mean_w10"
+    },
+    "4": {
+      "best_auc": 0.9199276986434108,
+      "feature": "basis_variance_ratio"
+    }
+  }
+}

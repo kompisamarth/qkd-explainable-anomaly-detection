@@ -100,3 +100,34 @@ def test_multiattack_feature_causality():
         df_clean.loc[before_mask, FEATURE_NAMES_63].values,
         df_corrupted.loc[before_mask, FEATURE_NAMES_63].values,
     )
+
+
+def test_nuisance_randomization_breaks_per_class_fingerprints():
+    """Transmission efficiency must overlap across all classes (README P2.1).
+
+    Before the fix, every class ran at a fixed channel transmittance of 1.0, so
+    this feature was exactly 1.000 with zero variance for classes 0 and 1 and
+    separated three of the five classes on its own.
+    """
+    sim = BB84Simulator(raw_photons_per_block=1024, random_state=5)
+    ranges = {}
+    for cls in range(5):
+        effs = []
+        for i in range(12):
+            seq = sim.simulate_session(
+                session_id=cls * 100 + i,
+                target_attack_class=cls,
+                blocks_per_session=60,
+                attack_start_block=30,
+                attack_mode="multiattack",
+                randomize_nuisance=True,
+            )
+            effs.extend(seq.block_transmission_effs[30:].tolist())
+        arr = np.asarray(effs)
+        assert arr.std() > 0.02, f"class {cls} transmission efficiency is near-constant"
+        ranges[cls] = (float(arr.min()), float(arr.max()))
+
+    lo0, hi0 = ranges[0]
+    for cls in range(1, 5):
+        lo, hi = ranges[cls]
+        assert lo < hi0 and lo0 < hi, f"class {cls} range {ranges[cls]} misses benign {ranges[0]}"

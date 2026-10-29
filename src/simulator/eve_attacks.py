@@ -56,11 +56,28 @@ class EveAttacker:
         attack_type: Optional[str] = None,
         mu_wcp: float = 0.30,
         shift_delay_prob: float = 0.60,
+        pns_single_pass_frac: float = 0.35,
+        blinding_eff: float = 0.95,
+        blinding_residual_qber: float = 0.005,
+        ts_eff_z: float = 1.0,
+        ts_eff_x_ratio: float = 0.40,
+        ts_x_misalign: float = 0.14,
     ):
         self.class_id = int(class_id)
         self.p_eve = float(p_eve)
         self.mu_wcp = float(mu_wcp)
         self.shift_delay_prob = float(shift_delay_prob)
+        # Attack-strength nuisance parameters. The defaults reproduce the original
+        # hard-coded constants, so direct callers and tests are unaffected. The
+        # dataset generator randomizes them per session over ranges that overlap
+        # benign behaviour, so no class carries a deterministic fingerprint
+        # (see README section 3.0, task P2.1).
+        self.pns_single_pass_frac = float(pns_single_pass_frac)
+        self.blinding_eff = float(blinding_eff)
+        self.blinding_residual_qber = float(blinding_residual_qber)
+        self.ts_eff_z = float(ts_eff_z)
+        self.ts_eff_x_ratio = float(ts_eff_x_ratio)
+        self.ts_x_misalign = float(ts_x_misalign)
         self.rng = np.random.default_rng(random_state)
         
         # Determine internal attack type
@@ -174,15 +191,25 @@ class EveAttacker:
         bob_bases: np.ndarray,
         base_channel_transmittance: float = 1.0,
         dark_count_rate: float = 1e-5,
+        det_eff_z: float = 1.0,
+        det_eff_x: float = 1.0,
     ) -> Dict[str, Any]:
-        """Full physical simulation for all 5 classes (Normal + 4 attacks)."""
+        """Full physical simulation for all 5 classes (Normal + 4 attacks).
+
+        det_eff_z / det_eff_x are Bob's per-basis detector efficiencies. Every real
+        receiver has some mismatch between its two bases, so benign sessions carry a
+        mild basis asymmetry that overlaps weak Time-Shift attacks. Without this,
+        basis asymmetry alone separates class 4 perfectly.
+        """
         n_pulses = len(alice_bits)
+        det_eff = np.where(bob_bases == 0, det_eff_z, det_eff_x)
+        base_eff = base_channel_transmittance * det_eff
 
         # -------------------------------------------------------------
         # CLASS 0: NORMAL CHANNEL (Benign)
         # -------------------------------------------------------------
         if self.attack_type == "benign":
-            detection_mask = (self.rng.random(n_pulses) < base_channel_transmittance) | (
+            detection_mask = (self.rng.random(n_pulses) < base_eff) | (
                 self.rng.random(n_pulses) < dark_count_rate
             )
             basis_matches = (bob_bases == alice_bases)
@@ -202,7 +229,7 @@ class EveAttacker:
         # -------------------------------------------------------------
         elif self.attack_type == "intercept_resend":
             resend_bits, resend_bases, intercepted_mask = self.intercept_and_resend(alice_bits, alice_bases)
-            detection_mask = (self.rng.random(n_pulses) < base_channel_transmittance) | (
+            detection_mask = (self.rng.random(n_pulses) < base_eff) | (
                 self.rng.random(n_pulses) < dark_count_rate
             )
             bob_matches_in = (bob_bases == resend_bases)
@@ -226,13 +253,15 @@ class EveAttacker:
             multi_photon_mask = photon_counts >= 2
             single_photon_mask = photon_counts == 1
 
-            # Eve splits multi-photon pulses: forwards remainder losslessly (100% transmission)
+            # Eve splits multi-photon pulses and forwards the remainder losslessly over
+            # the channel, but Bob's detector efficiency still applies.
             # For single-photon pulses: Eve blocks a fraction to match overall loss profile
-            p_single_pass = 0.35 * base_channel_transmittance
+            multi_pass_mask = multi_photon_mask & (self.rng.random(n_pulses) < det_eff)
+            p_single_pass = self.pns_single_pass_frac * base_eff
             single_pass_mask = single_photon_mask & (self.rng.random(n_pulses) < p_single_pass)
-            
+
             # Bob receives multi-photon (split) pulses OR passing single-photon pulses + dark counts
-            detection_mask = multi_photon_mask | single_pass_mask | (self.rng.random(n_pulses) < dark_count_rate)
+            detection_mask = multi_pass_mask | single_pass_mask | (self.rng.random(n_pulses) < dark_count_rate)
 
             # Crucial: Eve NEVER disturbs polarization of the forwarded photons!
             basis_matches = (bob_bases == alice_bases)
@@ -261,7 +290,7 @@ class EveAttacker:
 
             # Eve sends bright trigger: clicks ONLY if Bob basis matches Eve basis
             basis_match_eve_bob = (bob_bases == eve_bases)
-            blinded_clicks = basis_match_eve_bob & (self.rng.random(n_pulses) < (0.95 * base_channel_transmittance))
+            blinded_clicks = basis_match_eve_bob & (self.rng.random(n_pulses) < (self.blinding_eff * base_eff))
             
             # Plus small linear-mode dark noise
             detection_mask = blinded_clicks | (self.rng.random(n_pulses) < (dark_count_rate * 0.1))
@@ -282,13 +311,14 @@ class EveAttacker:
         elif self.attack_type == "time_shift":
             shifted_mask = self.rng.random(n_pulses) < self.shift_delay_prob
 
-            # Efficiency mismatch between Z and X bases during time shift
-            eff_z = min(1.0, base_channel_transmittance * 1.0)
-            eff_x = max(0.15, base_channel_transmittance * 0.4)
+            # Efficiency mismatch between Z and X bases during time shift, applied on
+            # top of Bob's intrinsic per-basis mismatch
+            eff_z = min(1.0, base_channel_transmittance * det_eff_z * self.ts_eff_z)
+            eff_x = max(0.02, base_channel_transmittance * det_eff_x * self.ts_eff_x_ratio)
             eff_per_pulse = np.where(
                 shifted_mask,
                 np.where(bob_bases == 0, eff_z, eff_x),
-                base_channel_transmittance,
+                base_eff,
             )
             detection_mask = (self.rng.random(n_pulses) < eff_per_pulse) | (self.rng.random(n_pulses) < dark_count_rate)
 
@@ -298,7 +328,7 @@ class EveAttacker:
             bob_bits = np.where(basis_matches, alice_bits, random_bits)
 
             # Misalignment noise induced on X basis during time-shift gate edge
-            x_misalign_flips = shifted_mask & (bob_bases == 1) & (self.rng.random(n_pulses) < 0.14)
+            x_misalign_flips = shifted_mask & (bob_bases == 1) & (self.rng.random(n_pulses) < self.ts_x_misalign)
             bob_bits = np.where(x_misalign_flips, 1 - bob_bits, bob_bits)
 
             return {
