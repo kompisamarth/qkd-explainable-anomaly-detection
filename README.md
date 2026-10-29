@@ -88,6 +88,39 @@ This is not an arbitrary pairing. The group (B) attacks have **inherently tempor
 
 Note also that **laser damage is a precursor**: degrading isolation is what *enables* THA and laser seeding. Phase 3 therefore models attack **chains**, not just isolated attacks, and targets detection of the precursor before the downstream attack succeeds.
 
+### 2.6 Simulated verification of that decision (`src/simulator/mdi_qkd.py`)
+
+The claim in 2.3 is now implemented and measured rather than asserted. Charlie's station is modelled from first principles - a 50:50 beam splitter, a polarising beam splitter per output arm and four detectors - with gains and error rates obtained by averaging the two-fold coincidence probabilities over the random relative phase of two independent lasers, the same method already used in `tf_qkd.py`.
+
+**Physics checks** (`tests/test_mdi_qkd.py`, 8 tests):
+
+| Check | Result |
+|---|---|
+| Ideal relay, no dark counts or misalignment | `E_Z` exactly 0 |
+| Single-photon phase error vs theory | `e11` = 0.0296 = 2·e_d(1−e_d), to 1e-12 |
+| Rate scaling | falls ~100x per 100 km (linear in η_a·η_b) |
+| Does MDI-QKD beat the PLOB bound? | No, at any distance - as it should not |
+| SNS-TF-QKD vs MDI-QKD at 300 km | TF-QKD wins, confirming its √η advantage |
+
+**The detector attack, run against both protocols** (`fig9_detector_attack_comparison.png`, `mdi_detector_attack_comparison.csv`):
+
+| Eve controls the measurement device | BB84 + blinding | MDI-QKD + Eve as Charlie |
+|---|:---:|:---:|
+| Key bits Eve learns | **100%** | 100% in the Z basis |
+| Error rate the operator observes | 0.50% | 0.50% |
+| Independent security monitor | none - Eve forges the check basis too | **X-basis phase error, 50%** |
+| Protocol aborts? | **No** | **Yes** |
+
+MDI-QKD trips its monitor once Eve controls just **20%** of the relay; BB84 never trips at any control fraction. The reason is structural: measuring the pulses to learn Z-basis bits destroys their X-basis coherence, and that phase error is computed by Alice and Bob from states *they* prepared, so Eve cannot forge it.
+
+**The price is rate, not security.** MDI-QKD's key rate scales with the product of the two arm transmittances, so it is slower than BB84 at every distance and never beats the PLOB bound. That is TF-QKD's trick, not MDI's.
+
+| Distance | MDI-QKD | SNS-TF-QKD | Decoy BB84 |
+|:---:|:---:|:---:|:---:|
+| 100 km | 9.3e-5 | 4.9e-4 | 1.3e-3 |
+| 200 km | 9.1e-7 | 4.7e-5 | 1.3e-5 |
+| 300 km | 8.8e-9 | 4.6e-6 | 6.2e-8 |
+
 ---
 
 ## 3. Phase 3 Roadmap
@@ -107,7 +140,7 @@ The Phase 2 classifier reports 99.93% accuracy (Section 10.3). That number is **
 
 **Acceptance:** no single feature separates any class pair; reported accuracy carries a seed-variance band; ΔT and FPR tables exist for all five classes.
 
-### 3.1 WS-1 — MDI-QKD backbone
+### 3.1 WS-1 — MDI-QKD backbone  *(core model DONE — see Section 2.6)*
 
 Extend `src/simulator/tf_qkd.py` into a shared MDI module covering both MDI-QKD (Bell-state measurement at Charlie, decoy states, Z/X encoding) and the existing SNS-TF-QKD.
 
@@ -163,10 +196,11 @@ qkd-explainable-anomaly-detection/
 ├── README.md
 ├── requirements.txt
 ├── config.yaml                  # Simulation & ML hyperparameters
-├── app.py                       # Phase 2: Interactive Streamlit Security Operations Center (SOC)
+├── app.py                       # Interactive Streamlit SOC dashboard (6 tabs, scenario-driven)
 ├── data/
 │   ├── raw/                     # Raw simulated session sequences (.parquet / .csv)
 │   └── processed/               # Sliding-window time-series dataset (.csv)
+│       └── trial_sessions/      # Replayable one-per-class sessions used by the dashboard
 ├── results/
 │   ├── figures/                 # High-res publication plots (Latency, ROC, SHAP, Generalization)
 │   └── metrics/                 # JSON/CSV benchmark tables for the IEEE paper
@@ -176,6 +210,7 @@ qkd-explainable-anomaly-detection/
 │   │   ├── noise_models.py      # Fiber (Stationary Depolarizing) & Free-Space (Log-Normal Scintillation)
 │   │   ├── eve_attacks.py       # 5 classes: Benign, Fractional IR, PNS, Fake State, Time-Shift
 │   │   ├── tf_qkd.py            # SNS Twin-Field QKD, decoy-state BB84 key rate, PLOB bound
+│   │   ├── mdi_qkd.py           # MDI-QKD relay model + detector-attack comparison
 │   │   └── source_side.py       # [Phase 3] Transmitter telemetry & light-injection attacks
 │   ├── features/
 │   │   └── time_series.py       # Causal sliding-window extraction (14-feature and 63-feature banks)
@@ -195,8 +230,9 @@ qkd-explainable-anomaly-detection/
 │   ├── 07_train_multiattack_classifiers.py # Phase 2: Train & tune multi-class XGBoost
 │   ├── 08_evaluate_multiattack.py          # Phase 2: Benchmark metrics, confusion matrix & ROC
 │   ├── 09_explain_and_ablation.py          # Phase 2: SHAP ranking & feature group ablation
-│   └── 10_multiseed_evaluation.py          # P2.1: leakage audit + multi-seed mean/std benchmarks
-└── tests/                       # pytest suite: 24 tests (BB84, Twin-Field, 5-class attacks, leakage guard)
+│   ├── 10_multiseed_evaluation.py          # P2.1: leakage audit + multi-seed mean/std benchmarks
+│   └── 11_mdi_protocol_comparison.py       # MDI-QKD curves, detector attack, trial datasets
+└── tests/                       # pytest suite: 32 tests (BB84, TF-QKD, MDI-QKD, 5-class, leakage guard)
 ```
 
 Entries marked `[Phase 3]` are specified in Section 3 and not yet implemented.
@@ -250,10 +286,13 @@ python scripts/09_explain_and_ablation.py
 # 10. P2.1: leakage audit and multi-seed benchmarks (mean +/- std over 5 seeds)
 python scripts/10_multiseed_evaluation.py
 
-# 11. Run the interactive Streamlit SOC dashboard
+# 11. MDI-QKD curves, detector-attack demo, and trial datasets
+python scripts/11_mdi_protocol_comparison.py
+
+# 12. Run the interactive Streamlit SOC dashboard
 python -m streamlit run app.py
 
-# Run the test suite (24 tests)
+# Run the test suite (32 tests)
 python -m pytest
 ```
 
@@ -483,6 +522,55 @@ The same feature afterwards, overlapping across all five classes:
 
 ### 10.4 Running the Streamlit Security Operations Center (SOC)
 ```bash
+python -m streamlit run app.py
+```
+Six tabs, scenario-driven:
+* **Start Here** - the problem in plain language, the corrected headline numbers, and the protocol decision table.
+* **Live Monitor** - six presets, each chosen to expose a different blind spot of the 11% rule (clean baseline, sub-threshold stealth, zero-QBER PNS, detector blinding where the QBER *drops*, time-shift basis split, and an attack on a drifting free-space link). Replays pre-generated trial sessions instantly or simulates live.
+* **Why? (SHAP)** - per-block attribution with group-level roll-up and a plain-language reading, including when the block was misclassified.
+* **MDI-QKD** - interactive sweep of how much of the relay Eve controls, side by side for BB84 and MDI-QKD, plus the key-rate curves.
+* **Benchmarks** - corrected metrics, the leakage story, and the ablation.
+* **Threat Atlas** - per-class physics, the Phase 3 source-side attacks, the 63 features, the nuisance ranges, and the limitations.
+
+Trial sessions are generated by `scripts/11_mdi_protocol_comparison.py` into `data/processed/trial_sessions/` and carry the model's per-block predictions, so the dashboard replays them with no simulation cost. They are drawn from the same leakage-free distribution the model was trained on - the dashboard passes `randomize_nuisance=True`, which the earlier version did not, so its live sessions no longer come from a different distribution than the model saw in training.
+
+### 10.5 What the label leakage was, and how it was fixed (task P2.1)
+
+**The defect.** `simulate_block_vectorized` hard-coded `base_channel_transmittance = 1.0` and `dark_count_rate = 1e-5` for every class, and each attack carried fixed strength constants. As a result `transmission_efficiency` collapsed onto a per-class constant:
+
+| Class | mean | std | min | max |
+|---|:---:|:---:|:---:|:---:|
+| 0 Normal | 1.000000 | **0.000000** | 1.000000 | 1.000000 |
+| 1 Fractional IR | 1.000000 | **0.000000** | 1.000000 | 1.000000 |
+| 2 PNS | 0.407803 | 0.291112 | 0.075605 | 0.983477 |
+| 3 Fake State | 0.646346 | 0.173570 | 0.470078 | 0.990215 |
+| 4 Time-Shift | 0.867116 | 0.068717 | 0.750840 | 0.996992 |
+
+A feature with **zero variance** across two entire classes is a perfect separator, and `key_generation_rate`, `loss_anomaly_index` and the `qber_loss_*` features all derive from it.
+
+**The fix.** `src/simulator/bb84_engine.py` now defines `NUISANCE_RANGES` and a `randomize_nuisance` flag. Each session draws its own baseline QBER, channel transmittance, dark-count rate, per-basis detector efficiency and per-attack strength parameters, from ranges that deliberately overlap so that a benign session can look like a weak attack:
+
+* benign base QBER down to 0.5%, overlapping the fake-state blinding residual (0.2-2.0%)
+* benign channel loss spanning 10-95%, overlapping PNS yield suppression
+* benign detectors carrying up to 30% basis-efficiency mismatch - every real receiver has some - overlapping weak Time-Shift
+* IR interception down to 5%, where the induced error is comparable to benign drift
+
+The same feature afterwards, overlapping across all five classes:
+
+| Class | mean | std | min | max |
+|---|:---:|:---:|:---:|:---:|
+| 0 Normal | 0.4306 | 0.2156 | 0.0924 | 0.8654 |
+| 1 Fractional IR | 0.4103 | 0.2246 | 0.1090 | 0.8525 |
+| 2 PNS | 0.1684 | 0.1360 | 0.0216 | 0.7555 |
+| 3 Fake State | 0.2534 | 0.1519 | 0.0405 | 0.7911 |
+| 4 Time-Shift | 0.4259 | 0.2121 | 0.0963 | 0.8441 |
+
+**Verification.** `scripts/10_multiseed_evaluation.py` writes `multiattack_leakage_audit.json`, recording the best single-feature one-vs-rest AUC per class. It fell from 0.97-0.998 before the fix to a mean maximum of **0.932 ± 0.014** after. Some separability is expected and legitimate - these are physically distinct attacks - but no class can be identified from a single feature any more. `tests/test_multiattack.py::test_nuisance_randomization_breaks_per_class_fingerprints` asserts the overlap, so the defect cannot silently return.
+
+**Note on the cross-validation figure.** `cv_multiattack_xgboost.json` reports 90.55% ± 0.15%, above the 86.29% held-out result, because that CV shuffles at *block* level and therefore splits overlapping windows from the same session across folds. The session-level held-out number is the one to quote.
+
+### 10.4 Running the Streamlit Security Operations Center (SOC)
+```bash
 streamlit run app.py
 ```
 * **Real-Time Temporal Monitor:** Live streaming QBER chart with the 11% threshold line and dual-basis ($Q_Z$ vs $Q_X$) error tracker.
@@ -510,7 +598,8 @@ Given discrete error sequence $E = [e_1, e_2, \dots, e_t]$, feature vectors $x_t
 * **Attack models are phenomenological.** The fake-state, time-shift and PNS models reproduce the qualitative signature of each attack rather than deriving it from a full device model. The TF-QKD phase-tampering attack is likewise phenomenological, not an optimal collective attack.
 * **Key rates are asymptotic** — no finite-key corrections and no AOPP.
 * **Free-space drift** is a log-normal AR(1) process on the QBER, not a full turbulence model.
-* **Phase 3 is a specification, not a result.** Nothing in Section 3 has been implemented or measured.
+* **MDI-QKD key rates are asymptotic** - no finite-key correction, infinite-decoy limit, and `Y11`/`e11` are leading-order expressions. The detector-attack comparison in Section 2.6 models Eve's best strategy analytically rather than simulating her hardware.
+* **Phase 3 is mostly a specification.** WS-1 (the MDI-QKD model) is implemented; WS-2 to WS-4 - the source-side telemetry simulator and the multi-modal monitor - are not.
 
 ---
 

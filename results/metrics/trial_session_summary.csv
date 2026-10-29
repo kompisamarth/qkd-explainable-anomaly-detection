@@ -1,0 +1,6 @@
+class_id,class_name,p_eve,blocks,post_onset_accuracy,detection_latency_blocks,file
+0,Normal,0.0,101,1.0,-1,trial_class0.csv
+1,Fractional IR,0.07513098958717561,101,0.32,10,trial_class1.csv
+2,PNS Attack,0.20914829937505092,101,0.9733333333333334,0,trial_class2.csv
+3,Fake State,1.0,101,0.72,0,trial_class3.csv
+4,Time-Shift,0.6876640061128378,101,0.9866666666666667,1,trial_class4.csv
