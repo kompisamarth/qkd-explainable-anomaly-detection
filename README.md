@@ -1,10 +1,12 @@
-# Explainable ML for Eavesdropping Detection in Quantum Key Distribution (BB84 + Twin-Field QKD)
+# Explainable ML for Eavesdropping Detection and Device-Assumption Monitoring in QKD
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![IEEE Format](https://img.shields.io/badge/Paper-IEEE%20EL%20Conference-orange.svg)](#)
 
-A research pipeline and benchmark implementation for explainable, low-latency machine learning detection of stealthy eavesdropping in discrete-variable Quantum Key Distribution. It covers the traditional **BB84** protocol and a modern **Sending-or-Not-Sending Twin-Field QKD (SNS-TF-QKD)** simulator, the protocol family behind today's longest-distance fiber QKD records (see [Section 7](#7-modern-protocol-sending-or-not-sending-twin-field-qkd)).
+A research pipeline and benchmark implementation for explainable, low-latency machine learning detection of stealthy attacks on Quantum Key Distribution. It covers the traditional **BB84** protocol, a **Sending-or-Not-Sending Twin-Field QKD (SNS-TF-QKD)** simulator, and — from Phase 3 — a **source-side side-channel monitor** targeting the transmitter light-injection attacks that no security proof currently covers.
+
+**Project status:** Phase 1 and Phase 2 complete (Sections 7–10). Phase 3 is specified in [Section 3](#3-phase-3-roadmap) and not yet implemented.
 
 ---
 
@@ -19,19 +21,141 @@ While modern ML classifiers can reach high static classification accuracy, liter
 2. **Cross-Channel Noise Generalization**: How does a model trained under stationary depolarizing fiber noise ($e_0 = 3\%$) degrade when deployed onto non-stationary free-space/satellite links subject to log-normal atmospheric turbulence and scintillation drift?
 3. **Transparent Explainability (XAI)**: Can the detector provide verifiable, feature-level attribution (via SHAP TreeExplainer) justifying an autonomous key-abort decision?
 
----
-
-## 2. Protocol Classes & Threat Model
-
-| Class | Label | Eavesdropping Strategy | Interception Rate $p_{\text{eve}}$ | Expected QBER ($e_0 = 3\%$) |
-|---|:---:|---|:---:|:---:|
-| **Class 0** | `0` | **Benign Noise** (Stationary fiber or scintillation) | $0.0$ | $\approx 3.0\%$ |
-| **Class 1** | `1` | **Full Intercept-Resend (IR)** | $1.0$ | $\approx 26.5\%$ (Exceeds $11\%$ abort) |
-| **Class 2** | `2` | **Fractional/Stealthy IR** | $[0.10, 0.30]$ | $\approx 5.3\% - 9.9\%$ (**Sub-threshold stealth**) |
+**Phase 3 adds a fourth, and reframes the contribution** (see Section 2): the most dangerous attacks of 2024–2026 are not channel attacks at all. They are *implementation* attacks that violate the device assumptions every security proof takes as a premise. The question becomes not "can ML detect Eve in the key?" but **"can ML certify at runtime that the security proof's assumptions still hold?"**
 
 ---
 
-## 3. Repository Architecture
+## 2. Threat Landscape (2024–2026) and Protocol Selection
+
+### 2.1 Attack taxonomy by structural location
+
+The practically hardest-to-manage attacks in the current literature sort into three structural locations. What matters for protocol selection is **where** the attack lives, not how it is implemented.
+
+| Group | Attacks | Why it is hard |
+|---|---|---|
+| **(A) Measurement / detector side** | Detector blinding & faked-state, detector-efficiency mismatch, time-shift, backflash leakage | Blinding has been **experimentally demonstrated to recover a full key without raising QBER**, on both APD and superconducting-nanowire detectors. The one obvious alarm bell never rings. Backflash leaks up to ~10% of detection events back down the channel. |
+| **(B) Source / transmitter side (light injection)** | Trojan-horse (THA), laser seeding / injection locking, induced photorefraction, laser damage | Eve injects light **into** Alice's device. The attack surface is the full spectrum (visible through ~1500–2100 nm), not just 1550 nm. Several of these — notably light injection and induced photorefraction — are **not covered by existing security proofs**. |
+| **(C) CV-QKD specific** | Homodyne-detector blinding, local-oscillator and calibration attacks | Different physical layer (quadratures, excess noise). Out of scope for this DV-focused project; noted for completeness. |
+
+### 2.2 Protocol coverage matrix
+
+"Closed" means the attack is **structurally impossible or harmless by construction**, not merely detectable by a statistic.
+
+| Attack | Location | BB84 | Decoy-BB84 | MDI-QKD | SNS-TF-QKD | DI-QKD |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Intercept-resend | channel | detectable | detectable | detectable | detectable | closed |
+| Photon-number splitting | source/channel | **open** | closed | closed | closed | closed |
+| Beam splitting | channel | open | partial | closed | closed | closed |
+| **Detector blinding / faked-state** | detector | **open** | **open** | **closed** | **closed** | closed |
+| **Detector-efficiency mismatch** | detector | **open** | **open** | **closed** | **closed** | closed |
+| **Time-shift** | detector | **open** | **open** | **closed** | **closed** | closed |
+| **Backflash leakage** | detector | **open** | **open** | **closed** | **closed** | closed |
+| **Trojan-horse (THA)** | **source** | open | open | **OPEN** | **OPEN** | **OPEN** |
+| **Laser seeding / injection locking** | **source** | open | open | **OPEN** | **OPEN** | **OPEN** |
+| **Induced photorefraction** | **source** | open | open | **OPEN** | **OPEN** | **OPEN** |
+| **Laser damage** | **source** | open | open | **OPEN** | **OPEN** | **OPEN** |
+
+### 2.3 Decision: MDI family (SNS-TF-QKD) as backbone
+
+**The most efficient protocol against this threat list is the measurement-device-independent family — concretely SNS-TF-QKD, which this repository already implements.**
+
+The reasoning:
+
+* **It eliminates the entire detector-side group (A) by construction.** In MDI-QKD and TF-QKD the measurement device is operated by an *untrusted* relay (Charlie). Eve is *permitted* to control the detectors completely; doing so cannot bias the key, only reduce the rate. Blinding, faked-state, efficiency mismatch, time-shift and backflash all stop being attacks. For blinding in particular — where a statistical monitor can only ever be a heuristic, because the attack produces no QBER signature — this is the difference between a guess and a proof.
+* **It is deployable today.** Metropolitan MDI-QKD networks are operational, and SNS-TF-QKD holds the ~1000 km fiber record (Liu et al., *PRL* 130, 210801, 2023). DI-QKD closes marginally more in theory but needs detection-loophole-free Bell violation; its rates and distances remain impractical.
+* **It costs this project almost nothing.** `src/simulator/tf_qkd.py` already models the untrusted relay, beam-splitter interference, decoy-state single-photon yield and phase-error estimation. MDI-QKD is the sibling protocol.
+
+### 2.4 Why no protocol closes group (B) — the sealed-laboratory assumption
+
+This is the pivot that reshapes the methodology.
+
+> **Every** QKD security proof — BB84, decoy-state, MDI, and even device-independent — assumes that *no unwanted information leaves Alice's and Bob's laboratories*. Trojan-horse and the wider light-injection family attack that premise **from outside the protocol**. They are therefore not fixable by any choice of protocol, including DI-QKD.
+
+Group (B) can only be addressed by hardware countermeasures (optical isolators, spectral filters, power limiters, watchdog photodiodes) **plus runtime monitoring** — and the literature openly concedes that the proofs have not caught up with the attacks.
+
+**That gap is the Phase 3 research contribution.** The protocol closes what proofs can close; the ML layer monitors what proofs cannot.
+
+### 2.5 Why temporal ML is the right instrument for group (B)
+
+This is not an arbitrary pairing. The group (B) attacks have **inherently temporal signatures**, which is precisely what this project's existing causal feature machinery (63 features, drift slope, multi-scale statistics, autocorrelation, spectral entropy) was built to capture:
+
+| Attack | Physical mechanism | Temporal signature |
+|---|---|---|
+| **Induced photorefraction** | Short-wavelength light builds a space-charge field in Alice's LiNbO₃ modulator, shifting its photorefractive properties | **Slow saturating-exponential drift** of modulator bias and extinction ratio over minutes–hours; partially recovers in the dark. Invisible to any static threshold; trivial for a drift-slope feature. |
+| **Laser damage** | High-power laser permanently degrades the isolator/attenuator | **Monotonic, irreversible** step/ramp in optical isolation. Distinguished from photorefraction precisely by *non-recovery*. |
+| **Laser seeding / injection locking** | Injected light seeds Alice's laser cavity | **Abrupt step** in side-mode suppression ratio, relative intensity noise and emitted wavelength at attack onset. |
+| **Trojan-horse** | Eve probes and reads back-reflections | Back-reflection power at the watchdog photodiode, **phase-locked to Alice's modulation frame** — Eve must probe *during* state preparation, so the cross-correlation with the modulation clock is the signature. |
+
+Note also that **laser damage is a precursor**: degrading isolation is what *enables* THA and laser seeding. Phase 3 therefore models attack **chains**, not just isolated attacks, and targets detection of the precursor before the downstream attack succeeds.
+
+---
+
+## 3. Phase 3 Roadmap
+
+Phase 3 is the final submission phase. It has two halves: hardening what Phase 2 already claims, then building the source-side monitor.
+
+### 3.0 Phase 2 close-out (prerequisite — do first)
+
+The Phase 2 classifier reports 99.93% accuracy (Section 10.3). That number is **not trustworthy as a generalization estimate**, and must be corrected before it goes into a submission.
+
+| # | Task | Rationale |
+|---|---|---|
+| P2.1 | **Overlap the nuisance ranges across classes.** Draw per-session baseline QBER, detector efficiency, channel loss and misalignment from *overlapping* distributions instead of per-class constants. | Each attack class currently carries a hand-coded, near-deterministic fingerprint (fake-state forces effective noise to `min(0.005, ·)`; time-shift hard-codes η_Z = 1.0 vs η_X = 0.4). The model is partly learning the simulator, not the physics. |
+| P2.2 | **Re-report accuracy as mean ± std over ≥ 5 seeds.** Expect a substantial, honest drop. | A single-seed 99.93% on synthetic multi-class data is a red flag reviewers will press on. |
+| P2.3 | **Add detection latency ΔT and FPR to the 5-class evaluation.** | Currently only accuracy/F1 are reported for Phase 2, losing the operational framing that makes Phase 1 strong. |
+| P2.4 | **Run the 5-class model cross-channel (fiber → free-space).** | Section 9.3 is the most intellectually honest result in the repo; Phase 2 has no equivalent. |
+
+**Acceptance:** no single feature separates any class pair; reported accuracy carries a seed-variance band; ΔT and FPR tables exist for all five classes.
+
+### 3.1 WS-1 — MDI-QKD backbone
+
+Extend `src/simulator/tf_qkd.py` into a shared MDI module covering both MDI-QKD (Bell-state measurement at Charlie, decoy states, Z/X encoding) and the existing SNS-TF-QKD.
+
+**Deliverables:** key rate vs. distance curves for MDI-QKD alongside the existing SNS-TF and decoy-BB84 curves; a demonstration that a simulated blinding/time-shift attack on Charlie's detectors yields Eve **no key advantage**, only rate reduction.
+
+**Acceptance:** MDI key-rate curve reproduces published behaviour within an order of magnitude; the blinding demonstration is a passing test, not a plot.
+
+### 3.2 WS-2 — Source-side telemetry simulator (the new physics)
+
+New module `src/simulator/source_side.py`. Model Alice's transmitter as a component chain emitting observable telemetry alongside the protocol statistics.
+
+**Telemetry channels:**
+
+| Signal | Units | Primarily reveals |
+|---|---|---|
+| `watchdog_power` | nW | Trojan-horse back-reflection |
+| `isolation_db` | dB | Laser damage (irreversible degradation) |
+| `smsr_db`, `rin`, `wavelength_shift_pm` | dB, —, pm | Laser seeding / injection locking |
+| `modulator_bias_v`, `extinction_ratio_db` | V, dB | Induced photorefraction |
+| `qber_z`, `qber_x`, `gain`, decoy yields | — | Protocol-level consequences of all of the above |
+
+**Attack classes:** 0 Normal · 1 Trojan-horse · 2 Laser seeding · 3 Induced photorefraction · 4 Laser damage · 5 Laser-damage → THA **chain**.
+
+**Physics to get right:** THA leakage bounded by outgoing photon number $\mu_{\text{out}}$ (Lucamarini et al., *PRX* 2015), with back-reflected power $P_{\text{wd}} = P_{\text{in}} R \cdot 10^{-I/10}$; photorefraction as a saturating exponential with time constant τ and slow dark recovery; laser damage as a monotonic non-recovering isolation drop that raises the success probability of the subsequent THA.
+
+**Acceptance:** each attack's effect on $\mu_{\text{out}}$ and on QBER is derived from the component model, not hard-coded; benign nuisance drift (thermal, aging) overlaps the attack ranges so the classes are not trivially separable.
+
+### 3.3 WS-3 — Multi-modal temporal ML + XAI
+
+Generalize `CausalMultiAttackFeatureExtractor` from a single QBER stream to **multi-channel telemetry**, applying the existing 63-feature bank per channel and adding cross-channel features (notably watchdog × modulation-clock correlation for THA).
+
+**Models:** XGBoost and Random Forest. **Baselines:** fixed threshold per telemetry channel, CUSUM changepoint detection, and the Hoeffding test — to show that single-channel thresholds miss the slow-drift attacks.
+
+**Reported:** accuracy, macro-F1, per-class F1, FNR, detection latency ΔT, FPR calibrated at 1%, SHAP attribution **by telemetry channel**, and leave-one-modality-out ablation.
+
+**Acceptance:** SHAP identifies the physically correct channel for each attack (e.g. `modulator_bias_v` drift for photorefraction, `isolation_db` for laser damage); latency for the slow-drift attacks is reported in physical time, not just blocks.
+
+### 3.4 WS-4 — Integration and deliverables
+
+Coverage matrix (Section 2.2) as a publication figure showing which layer stops which attack; extended SOC dashboard with a source-side telemetry panel; `docs/PHYSICS.md` and `docs/THREAT_MODEL.md` in plain language; consolidated limitations.
+
+### 3.5 Sequencing
+
+WS-1 and WS-2 are independent and can proceed in parallel. WS-3 depends on WS-2. P2.0 close-out should precede everything, because the leakage fix changes every number Phase 2 reports.
+
+---
+
+## 4. Repository Architecture
 
 ```text
 qkd-explainable-anomaly-detection/
@@ -39,6 +163,7 @@ qkd-explainable-anomaly-detection/
 ├── README.md
 ├── requirements.txt
 ├── config.yaml                  # Simulation & ML hyperparameters
+├── app.py                       # Phase 2: Interactive Streamlit Security Operations Center (SOC)
 ├── data/
 │   ├── raw/                     # Raw simulated session sequences (.parquet / .csv)
 │   └── processed/               # Sliding-window time-series dataset (.csv)
@@ -49,33 +174,35 @@ qkd-explainable-anomaly-detection/
 │   ├── simulator/
 │   │   ├── bb84_engine.py       # Alice state prep, Bob measurement, Sifting, QBER calculation
 │   │   ├── noise_models.py      # Fiber (Stationary Depolarizing) & Free-Space (Log-Normal Scintillation)
-│   │   ├── eve_attacks.py       # Benign (p=0), Fractional IR (0 < p < 1), Full IR (p=1)
-│   │   └── tf_qkd.py            # SNS Twin-Field QKD, decoy-state BB84 key rate, PLOB bound
+│   │   ├── eve_attacks.py       # 5 classes: Benign, Fractional IR, PNS, Fake State, Time-Shift
+│   │   ├── tf_qkd.py            # SNS Twin-Field QKD, decoy-state BB84 key rate, PLOB bound
+│   │   └── source_side.py       # [Phase 3] Transmitter telemetry & light-injection attacks
 │   ├── features/
-│   │   └── time_series.py       # Causal sliding-window feature extraction (no future leakage)
+│   │   └── time_series.py       # Causal sliding-window extraction (14-feature and 63-feature banks)
 │   ├── models/
 │   │   ├── hoeffding_baseline.py# Lee et al. (2022) classical dynamic threshold
 │   │   ├── ml_classifiers.py    # Random Forest & XGBoost wrappers with calibrated FPR
 │   │   └── explainability.py    # SHAP TreeExplainer integration & feature attribution
 │   └── evaluation/
 │       └── benchmarks.py        # Latency (Delta T), FPR control, Cross-channel degradation
-└── scripts/
-    ├── 01_verify_physics.py     # Analytical and Qiskit sanity check for BB84 physics
-    ├── 02_generate_dataset.py   # Multi-condition synthetic dataset generator
-    ├── 03_run_benchmarks.py     # Train, evaluate latency & cross-channel shift
-    ├── 04_explain_and_plot.py   # Generate SHAP plots and 300 DPI publication figures
-    ├── 05_modern_qkd_tfqkd.py   # Twin-Field QKD: key rate vs distance, phase-attack detection
-    ├── 06_generate_multiattack_dataset.py  # Phase 2: 5-class multi-attack dataset generator
-    ├── 07_train_multiattack_classifiers.py # Phase 2: Train & tune multi-class XGBoost
-    ├── 08_evaluate_multiattack.py          # Phase 2: Benchmark metrics, confusion matrix & ROC
-    └── 09_explain_and_ablation.py          # Phase 2: SHAP ranking & feature group ablation
-app.py                           # Phase 2: Interactive Streamlit Security Operations Center (SOC)
-tests/                           # pytest suite: 23 tests (BB84, Twin-Field, 5-class attacks)
+├── scripts/
+│   ├── 01_verify_physics.py     # Analytical and Qiskit sanity check for BB84 physics
+│   ├── 02_generate_dataset.py   # Multi-condition synthetic dataset generator
+│   ├── 03_run_benchmarks.py     # Train, evaluate latency & cross-channel shift
+│   ├── 04_explain_and_plot.py   # Generate SHAP plots and 300 DPI publication figures
+│   ├── 05_modern_qkd_tfqkd.py   # Twin-Field QKD: key rate vs distance, phase-attack detection
+│   ├── 06_generate_multiattack_dataset.py  # Phase 2: 5-class multi-attack dataset generator
+│   ├── 07_train_multiattack_classifiers.py # Phase 2: Train & tune multi-class XGBoost
+│   ├── 08_evaluate_multiattack.py          # Phase 2: Benchmark metrics, confusion matrix & ROC
+│   └── 09_explain_and_ablation.py          # Phase 2: SHAP ranking & feature group ablation
+└── tests/                       # pytest suite: 23 tests (BB84, Twin-Field, 5-class attacks)
 ```
+
+Entries marked `[Phase 3]` are specified in Section 3 and not yet implemented.
 
 ---
 
-## 4. Quickstart Guide
+## 5. Quickstart Guide
 
 ### Prerequisites
 - Python 3.10+
@@ -130,11 +257,21 @@ Approximate runtimes on a 24-core desktop: 01 ≈ 2 s, 02 ≈ 70 s, 03 ≈ 60 s,
 
 ---
 
-## 5. Results (reproduced 2026-10-26)
+## 6. Phase 1 Protocol Classes & Threat Model
+
+| Class | Label | Eavesdropping Strategy | Interception Rate $p_{\text{eve}}$ | Expected QBER ($e_0 = 3\%$) |
+|---|:---:|---|:---:|:---:|
+| **Class 0** | `0` | **Benign Noise** (Stationary fiber or scintillation) | $0.0$ | $\approx 3.0\%$ |
+| **Class 1** | `1` | **Full Intercept-Resend (IR)** | $1.0$ | $\approx 26.5\%$ (Exceeds $11\%$ abort) |
+| **Class 2** | `2` | **Fractional/Stealthy IR** | $[0.10, 0.30]$ | $\approx 5.3\% - 9.9\%$ (**Sub-threshold stealth**) |
+
+---
+
+## 7. Phase 1 Results (reproduced 2026-10-26)
 
 All numbers below come from running scripts 01-05 with `random_seed: 42` (Python 3.13, numpy 2.1, scikit-learn 1.9, xgboost 3.4).
 
-### 5.1 Physics verification (`01_verify_physics.py`)
+### 7.1 Physics verification (`01_verify_physics.py`)
 
 | Check | Empirical | Theory |
 |---|:---:|:---:|
@@ -144,7 +281,7 @@ All numbers below come from running scripts 01-05 with `random_seed: 42` (Python
 | Free-space drift: QBER std / lag-1 autocorrelation | 0.0063 / 0.70 | ≈0.009 / 0.75 |
 | Qiskit measure-and-resend, $p_{\text{eve}}=1$ | 0.2446 | 0.2500 |
 
-### 5.2 Fiber test set, binary detection (`03_run_benchmarks.py`)
+### 7.2 Fiber test set, binary detection (`03_run_benchmarks.py`)
 
 | Detector | Accuracy | F1 | FPR | AUROC |
 |---|:---:|:---:|:---:|:---:|
@@ -164,7 +301,7 @@ Full-IR blocks are trivially detectable and make up half of all attack blocks, s
 | Random Forest | 0.997 | 0.998 | 0.0003 |
 | XGBoost | 0.997 | 0.998 | 0.0003 |
 
-### 5.3 Cross-channel generalization (trained on fiber, tested on free-space)
+### 7.3 Cross-channel generalization (trained on fiber, tested on free-space)
 
 | Detector | Fiber F1 | Free-space F1 | Free-space FPR |
 |---|:---:|:---:|:---:|
@@ -174,7 +311,7 @@ Full-IR blocks are trivially detectable and make up half of all attack blocks, s
 
 ML detectors trained on stationary fiber noise mistake atmospheric drift for an attack. Their FPR rises far above the 1% target, while the analytic Hoeffding test degrades gracefully. Multi-class models (`multiclass_benchmarks.csv`) drop from 0.999 to 0.92-0.94 accuracy, and the fractional-IR F1 falls to 0.82 (RF) / 0.86 (XGB).
 
-### 5.4 Detection latency ΔT (mean blocks after onset, 40 sessions per point)
+### 7.4 Detection latency ΔT (mean blocks after onset, 40 sessions per point)
 
 | $p_{\text{eve}}$ | Static 11% | Hoeffding single | Hoeffding windowed | RF | XGBoost |
 |:---:|:---:|:---:|:---:|:---:|:---:|
@@ -185,7 +322,7 @@ ML detectors trained on stationary fiber noise mistake atmospheric drift for an 
 
 ---
 
-## 6. Comparison with the originally committed results
+## 8. Comparison with the originally committed results
 
 The scripts were first re-run unchanged (apart from a crash fix) and compared with the committed `results/metrics`:
 
@@ -199,7 +336,7 @@ Issues found and fixed during the review:
 |---|---|---|---|
 | 1 | `ml_classifiers.py` used `Path` without importing it | Scripts 03 and 04 crashed with `NameError`; the committed results could not be regenerated | Added the import |
 | 2 | The Qiskit check never measured Eve: her H gate just stacked with Bob's | The check landed on ~25% by coincidence, not physics | Real measure, collapse and re-prepare in two circuits, plus a zero-QBER no-Eve check |
-| 3 | `scintillation_std: 0.008` gave a free-space QBER std of 0.0002, far below the 0.0075 binomial noise of a block | The cross-channel experiment was vacuous (F1 drop ≈ 0.0003), contradicting the claim above | Raised to 0.30 (QBER 3% ± 0.6-0.9%); the degradation in §5.3 is now real |
+| 3 | `scintillation_std: 0.008` gave a free-space QBER std of 0.0002, far below the 0.0075 binomial noise of a block | The cross-channel experiment was vacuous (F1 drop ≈ 0.0003), contradicting the claim above | Raised to 0.30 (QBER 3% ± 0.6-0.9%); the degradation in §7.3 is now real |
 | 4 | Physics Test 3 seeded the noise model and Eve with the same seed | Noise flips and interceptions were correlated (identical RNG streams) | Distinct seeds. The dataset pipeline was not affected |
 | 5 | Each latency detector consumed a different part of the simulator's random stream | Detectors were compared on different sessions | A fresh, identically seeded simulator for each detector |
 | 6 | Python loop over 530k windows | Dataset generation took 9.5 min | Vectorized extractor, matching the reference to within 2e-19: **≈ 70 s** |
@@ -207,9 +344,9 @@ Issues found and fixed during the review:
 
 ---
 
-## 7. Modern Protocol: Sending-or-Not-Sending Twin-Field QKD
+## 9. Modern Protocol: Sending-or-Not-Sending Twin-Field QKD
 
-BB84 key rates fall linearly with channel transmittance η. No point-to-point protocol can beat the **PLOB bound** $-\log_2(1-\eta)$. **Twin-Field QKD** (Lucamarini et al., *Nature* 2018) interferes weak pulses from Alice and Bob at an untrusted relay (Charlie). Only one photon has to survive *half* of the channel, so the rate scales as $\sqrt{\eta}$. The **sending-or-not-sending** variant (Wang, Yu & Hu, *PRA* 2018) underlies record demonstrations such as ~1000 km of fiber (Liu et al., *PRL* 2023). Because Charlie is untrusted, the protocol is also measurement-device-independent, which removes detector side channels.
+BB84 key rates fall linearly with channel transmittance η. No point-to-point protocol can beat the **PLOB bound** $-\log_2(1-\eta)$. **Twin-Field QKD** (Lucamarini et al., *Nature* 2018) interferes weak pulses from Alice and Bob at an untrusted relay (Charlie). Only one photon has to survive *half* of the channel, so the rate scales as $\sqrt{\eta}$. The **sending-or-not-sending** variant (Wang, Yu & Hu, *PRA* 2018) underlies record demonstrations such as ~1000 km of fiber (Liu et al., *PRL* 2023). Because Charlie is untrusted, the protocol is also measurement-device-independent, which removes detector side channels — see the coverage matrix in Section 2.2.
 
 `src/simulator/tf_qkd.py` implements:
 * **Z (signal) window:** each side sends a phase-randomized coherent state $\mu_z$ with probability ε, and vacuum otherwise. An effective event is exactly one of Charlie's two detectors clicking.
@@ -241,18 +378,14 @@ SNS-TF-QKD overtakes decoy BB84 at ~150 km and **beats the PLOB bound from ~250 
 
 Phase tampering leaves the Z-window bit errors **exactly** unchanged, because Z pulses are already phase-randomized. A conventional QBER monitor therefore fires only at its own false-alarm rate. The attack shows up only in the X-window phase error, and the slow phase drift makes that error non-stationary. As a result, a Hoeffding test that assumes a fixed baseline false-alarms on 13-17% of benign blocks. The temporal Random Forest, trained on drifting benign data, keeps the FPR below 1% and detects $p_{\text{eve}} \ge 0.05$ within about 7 blocks.
 
-### Limitations
-
-Everything is simulated: there is no hardware, and key rates are asymptotic (no finite-key corrections, no AOPP). The phase-tampering attack is phenomenological, not an optimal collective attack. Free-space drift is modelled as a log-normal AR(1) process on the QBER, not a full turbulence model.
-
 ---
 
-## 8. Phase 2: Multi-Attack Classification & Streamlit SOC Dashboard
-*Reference Architecture:* *"Beyond the QBER Threshold: A Temporal QBER Based Machine Learning Framework for Multi Attack Detection in BB84 QKD"* (IIT Mandi & DRDO, arXiv:2608.04047v1)
+## 10. Phase 2: Multi-Attack Classification & Streamlit SOC Dashboard
+*Reference Architecture:* *"Beyond the QBER Threshold: A Temporal QBER Based Machine Learning Framework for Multi Attack Detection in BB84 QKD"*
 
-Phase 2 scales the framework from binary anomaly detection to a comprehensive **5-class multi-attack classification engine** powered by a dedicated champion classifier (**XGBoost**) and a real-time **Streamlit Security Operations Center (SOC)**.
+Phase 2 scales the framework from binary anomaly detection to a **5-class multi-attack classification engine** powered by XGBoost and a real-time **Streamlit Security Operations Center (SOC)**.
 
-### 8.1 The 5 Operational Regimes
+### 10.1 The 5 Operational Regimes
 
 | Class | Threat Archetype | Physical Layer Exploited | Primary Feature Fingerprint |
 |:---:|---|---|---|
@@ -260,64 +393,69 @@ Phase 2 scales the framework from binary anomaly detection to a comprehensive **
 | **1** | **Fractional IR** | Quantum state vector disturbance | Elevated **jump energy, temporal variance, Fano factor** ($QBER \approx 5.5\% - 9.5\%$). |
 | **2** | **PNS Attack** | Laser multi-photon pulse splitting | **Zero added QBER ($\Delta QBER \approx 0$)**, abnormal drop in key generation rate and transmission efficiency. |
 | **3** | **Fake State** | SPAD detector blinding into linear mode | **Near-zero QBER ($\approx 0.3\%$)**, deterministic basis-coincidence, abnormal error-gap CV. |
-| **4** | **Time-Shift** | Timing & efficiency detector mismatch | Severe **basis asymmetry ($|Q_{\text{rect}} - Q_{\text{diag}}| \gg 0$)** beneath 11% average threshold. |
+| **4** | **Time-Shift** | Timing & efficiency detector mismatch | Severe **basis asymmetry ($\|Q_{\text{rect}} - Q_{\text{diag}}\| \gg 0$)** beneath 11% average threshold. |
 
-### 8.2 63 Physics-Informed Feature Categories ($W = 50$)
+### 10.2 63 Physics-Informed Feature Categories ($W = 50$)
 Extracted over causal backward-looking sliding windows ($W=50$) with zero future leakage:
 1. **Statistical (7):** `qber_mean`, `qber_variance`, `qber_std`, `qber_skewness`, `qber_kurtosis`, `qber_iqr`, `qber_cv`.
 2. **Burst & Instability (10):** `spike_density`, `burst_duration`, `jump_energy`, `temporal_drift_slope`, `max_jump`, `jump_count`, `error_gap_mean`, `error_gap_std`, `error_gap_cv`, `burstiness_index`.
 3. **Spectral & Temporal (12):** `autocorr_lag_1` to `lag_5`, `dft_low_energy`, `dft_mid_energy`, `dft_high_energy`, `spectral_entropy`, `spectral_centroid`, `shannon_entropy`, `ema_divergence`.
-4. **Basis-Dependent (12):** `qber_rectilinear` ($q_Z$), `qber_diagonal` ($q_X$), `basis_asymmetry` ($|q_Z - q_X|$), `basis_ratio`, `basis_burst_energy_z`, `basis_burst_energy_x`, `basis_variance_ratio`, `basis_cross_correlation`, `basis_skewness_diff`, `basis_kurtosis_diff`, `sift_ratio_z`, `sift_ratio_x`.
+4. **Basis-Dependent (12):** `qber_rectilinear` ($q_Z$), `qber_diagonal` ($q_X$), `basis_asymmetry`, `basis_ratio`, `basis_burst_energy_z`, `basis_burst_energy_x`, `basis_variance_ratio`, `basis_cross_correlation`, `basis_skewness_diff`, `basis_kurtosis_diff`, `sift_ratio_z`, `sift_ratio_x`.
 5. **Channel Interaction & Multi-Scale (22):** `key_generation_rate`, `transmission_efficiency`, `qber_loss_interaction`, `qber_loss_product`, `loss_anomaly_index`, `dark_count_ratio`, nested multi-scale statistics (`W=10, 25, 50` mean, std, fano, drift), `error_clustering_coefficient`, `loss_gradient`, `efficiency_entropy`, `qber_stability_index`.
 
-### 8.3 Experimental Benchmarks (101,000 Test Blocks)
+### 10.3 Experimental Benchmarks (101,000 Test Blocks)
 
 | Detector | Accuracy | Macro-F1 | Precision | False Negative Rate (FNR) |
 |---|:---:|:---:|:---:|:---:|
 | **Conventional Fixed 11% QBER Threshold** | 40.59% | 0.2887 | 0.2030 | **100.0%** (Missed all stealthy attacks) |
-| **Proposed XGBoost Multi-Attack Framework** | **99.93%** | **0.9994** | **0.9995** | **0.075%** (FNR reduced by 99.9%) |
+| **Proposed XGBoost Multi-Attack Framework** | **99.93%** | **0.9994** | **0.9995** | **0.075%** |
+
+> **⚠ Known limitation — these numbers overstate generalization.** Each attack class is currently generated with a near-deterministic, hand-coded fingerprint (for example, fake-state forces the effective channel noise to `min(0.005, ·)`, and time-shift hard-codes a fixed Z/X efficiency ratio), and the nuisance parameters do not overlap across classes. The classifier is therefore partly learning the *simulator's* signatures rather than attack physics. Task **P2.1** in the Phase 3 roadmap (Section 3.0) overlaps the nuisance ranges and re-reports these figures with seed variance; the accuracy is expected to fall substantially, and that corrected figure is the one that should be submitted.
 
 #### Per-Class Performance Breakdown (`multiattack_per_class_f1.csv`)
-* **Normal Channel:** Precision: 99.89% | Recall: 99.96% | F1: **0.9992**
-* **Fractional IR:** Precision: 99.88% | Recall: 99.70% | F1: **0.9979**
-* **PNS Attack:** Precision: 99.99% | Recall: 99.99% | F1: **0.9999**
-* **Fake State:** Precision: 99.99% | Recall: 99.99% | F1: **0.9999**
-* **Time-Shift:** Precision: 100.00% | Recall: 99.99% | F1: **1.0000**
+* **Normal Channel:** Precision 99.89% | Recall 99.96% | F1 **0.9992**
+* **Fractional IR:** Precision 99.88% | Recall 99.70% | F1 **0.9979**
+* **PNS Attack:** Precision 99.99% | Recall 99.99% | F1 **0.9999**
+* **Fake State:** Precision 99.99% | Recall 99.99% | F1 **0.9999**
+* **Time-Shift:** Precision 100.00% | Recall 99.99% | F1 **1.0000**
 
 #### Leave-One-Group-Out Feature Ablation Study (`fig_ablation_5class.png`)
-* Removing **Channel Interaction** features caused the largest drop (**-0.89%**), followed by **Basis-Dependent** and **Burst/Spectral** features, confirming the DRDO paper's finding that multi-attack discrimination requires channel and basis interaction metrics beyond scalar QBER.
+Removing **Channel Interaction** features caused the largest drop (**-0.89%**), followed by **Basis-Dependent** and **Burst/Spectral** features, confirming that multi-attack discrimination requires channel and basis interaction metrics beyond scalar QBER.
 
-### 8.4 Running the Streamlit Security Operations Center (SOC)
-Launch the interactive dashboard with:
+### 10.4 Running the Streamlit Security Operations Center (SOC)
 ```bash
 streamlit run app.py
 ```
 * **Real-Time Temporal Monitor:** Live streaming QBER chart with the 11% threshold line and dual-basis ($Q_Z$ vs $Q_X$) error tracker.
-* **XGBoost Threat HUD:** Live 5-class horizontal confidence bars, detection latency counter ($\Delta T$), and automated key-abort simulation.
+* **XGBoost Threat HUD:** Live 5-class confidence bars, detection latency counter ($\Delta T$), and automated key-abort simulation.
 * **SHAP Explainability Card:** On-the-fly waterfall plot showing exact physics feature contributions.
-* **Paper Visualizer:** Embedded 300 DPI Confusion Matrix, ROC curves, and ablation tables.
+* **Paper Visualizer:** Embedded 300 DPI confusion matrix, ROC curves, and ablation tables.
 
 ---
 
-## 9. Mathematical Formulations
+## 11. Mathematical Formulations
 
 ### Hoeffding Baseline Threshold (Lee et al., 2022)
 For a sifted key block of size $N$ with baseline error $e_0$ and significance level $\alpha = 0.01$:
 $$\hat{e}_{\text{thresh}} = e_0 + \sqrt{\frac{\ln(1/\alpha)}{2N}}$$
 
 ### Causal Feature Extraction
-Given discrete error sequence $E = [e_1, e_2, \dots, e_t]$, feature vectors $x_t \in \mathbb{R}^d$ are computed strictly using backward sliding windows $E_t = [e_{t-W+1}, \dots, e_t]$ of length $W=10$ to ensure zero future data leakage. Extracted features include:
-- Current QBER ($e_t$)
-- Rolling Mean ($\mu_t$) and Rolling Standard Deviation ($\sigma_t$)
-- Variance-to-Mean Ratio (Fano factor $\sigma_t^2 / \mu_t$)
-- First-Order Linear Drift / Slope across window $W$
-- Exponential Moving Average (EMA) divergence ($e_t - \text{EMA}_t$)
-- Rolling Skewness, Kurtosis, Shannon Entropy of the error distribution
-- Burstiness Index and Lag-1 Autocorrelation
+Given discrete error sequence $E = [e_1, e_2, \dots, e_t]$, feature vectors $x_t \in \mathbb{R}^d$ are computed strictly using backward sliding windows $E_t = [e_{t-W+1}, \dots, e_t]$ to ensure zero future data leakage. Extracted features include current QBER, rolling mean and standard deviation, Fano factor, first-order drift slope, EMA divergence, rolling skewness, kurtosis, Shannon entropy, burstiness index and lag-1 autocorrelation.
 
 ---
 
-## 10. Citation
+## 12. Limitations
+
+* **Everything is simulated.** There is no hardware in this project, and no measurement from a physical QKD system.
+* **Phase 2 accuracy overstates generalization** — see the caveat in Section 10.3 and task P2.1.
+* **Attack models are phenomenological.** The fake-state, time-shift and PNS models reproduce the qualitative signature of each attack rather than deriving it from a full device model. The TF-QKD phase-tampering attack is likewise phenomenological, not an optimal collective attack.
+* **Key rates are asymptotic** — no finite-key corrections and no AOPP.
+* **Free-space drift** is a log-normal AR(1) process on the QBER, not a full turbulence model.
+* **Phase 3 is a specification, not a result.** Nothing in Section 3 has been implemented or measured.
+
+---
+
+## 13. Citation
 
 If you use this benchmark codebase in your research, please cite:
 ```bibtex
