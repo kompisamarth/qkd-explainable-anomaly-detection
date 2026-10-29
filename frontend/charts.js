@@ -22,10 +22,10 @@
       const y = f.pad.t + f.ih - t.p * f.ih;
       f.svg.appendChild(el("line", {
         x1: f.pad.l, x2: f.pad.l + f.iw, y1: y, y2: y,
-        stroke: "#1e2a47", "stroke-width": 1, "stroke-dasharray": "3 5",
+        stroke: "#e2e8f0", "stroke-width": 1, "stroke-dasharray": "3 5",
       }));
       const lab = el("text", {
-        x: f.pad.l - 8, y: y + 4, fill: "#5d6d8c", "font-size": 10,
+        x: f.pad.l - 8, y: y + 4, fill: "#64748b", "font-size": 10,
         "text-anchor": "end", "font-family": "ui-monospace,monospace",
       });
       lab.textContent = fmtY(t.v);
@@ -39,7 +39,7 @@
       const idx = Math.round((xs.length - 1) * (i / (n - 1)));
       const x = f.pad.l + (idx / Math.max(xs.length - 1, 1)) * f.iw;
       const t = el("text", {
-        x, y: f.pad.t + f.ih + 16, fill: "#5d6d8c", "font-size": 10,
+        x, y: f.pad.t + f.ih + 16, fill: "#64748b", "font-size": 10,
         "text-anchor": "middle", "font-family": "ui-monospace,monospace",
       });
       t.textContent = xs[idx];
@@ -131,7 +131,7 @@
         f.svg.appendChild(halo);
         f.svg.appendChild(el("circle", {
           cx: last[0], cy: last[1], r: 3.2, fill: s.color,
-          stroke: "#070b18", "stroke-width": 1.5,
+          stroke: "#ffffff", "stroke-width": 1.5,
         }));
       }
     });
@@ -142,7 +142,7 @@
       let cx = pad.l;
       o.series.forEach(s => {
         lg.appendChild(el("rect", { x: cx, y: 1, width: 11, height: 2.6, rx: 1.3, fill: s.color }));
-        const t = el("text", { x: cx + 15, y: 5, fill: "#8b9ab5", "font-size": 10 });
+        const t = el("text", { x: cx + 15, y: 5, fill: "#475569", "font-size": 10 });
         t.textContent = s.name;
         lg.appendChild(t);
         cx += 19 + (s.name.length * 5.6);
@@ -172,11 +172,11 @@
     for (let p = lo; p <= hi; p += Math.max(1, Math.round((hi - lo) / 5))) {
       const y = sy(Math.pow(10, p));
       f.svg.appendChild(el("line", {
-        x1: pad.l, x2: pad.l + f.iw, y1: y, y2: y, stroke: "#1e2a47",
+        x1: pad.l, x2: pad.l + f.iw, y1: y, y2: y, stroke: "#e2e8f0",
         "stroke-width": 1, "stroke-dasharray": "3 5",
       }));
       const t = el("text", {
-        x: pad.l - 8, y: y + 4, fill: "#5d6d8c", "font-size": 9.5,
+        x: pad.l - 8, y: y + 4, fill: "#64748b", "font-size": 9.5,
         "text-anchor": "end", "font-family": "ui-monospace,monospace",
       });
       t.textContent = "1e" + p;
@@ -206,7 +206,7 @@
     let cy = pad.t + 2;
     o.series.forEach(s => {
       lg.appendChild(el("rect", { x: pad.l + f.iw - 150, y: cy, width: 11, height: 2.6, rx: 1.3, fill: s.color }));
-      const t = el("text", { x: pad.l + f.iw - 134, y: cy + 4, fill: "#8b9ab5", "font-size": 9.5 });
+      const t = el("text", { x: pad.l + f.iw - 134, y: cy + 4, fill: "#475569", "font-size": 9.5 });
       t.textContent = s.name;
       lg.appendChild(t);
       cy += 14;
@@ -230,7 +230,7 @@
 
     if (o.diverging) {
       f.svg.appendChild(el("line", {
-        x1: zero, x2: zero, y1: pad.t, y2: pad.t + rows * rh, stroke: "#2b3b60", "stroke-width": 1,
+        x1: zero, x2: zero, y1: pad.t, y2: pad.t + rows * rh, stroke: "#cbd5e1", "stroke-width": 1,
       }));
     }
 
@@ -238,10 +238,10 @@
       const y = pad.t + i * rh + 4;
       const w = Math.abs(it.value) * scale;
       const x = it.value < 0 && o.diverging ? zero - w : zero;
-      const color = it.color || (o.diverging ? (it.value >= 0 ? "#f43f5e" : "#38bdf8") : "#22d3ee");
+      const color = it.color || (o.diverging ? (it.value >= 0 ? "#dc2626" : "#0d9488") : "#0d9488");
 
       const lab = el("text", {
-        x: pad.l - 10, y: y + 11, fill: "#8b9ab5", "font-size": 10.5, "text-anchor": "end",
+        x: pad.l - 10, y: y + 11, fill: "#334155", "font-size": 10.5, "text-anchor": "end",
         "font-family": "ui-monospace,monospace",
       });
       lab.textContent = it.label.length > 26 ? it.label.slice(0, 25) + "…" : it.label;
@@ -256,7 +256,7 @@
 
       const vt = el("text", {
         x: (it.value < 0 && o.diverging ? x - 6 : x + Math.max(w, 1.5) + 6),
-        y: y + 11, fill: "#8b9ab5", "font-size": 10,
+        y: y + 11, fill: "#475569", "font-size": 10,
         "text-anchor": it.value < 0 && o.diverging ? "end" : "start",
         "font-family": "ui-monospace,monospace",
       });
@@ -285,29 +285,29 @@
 
     f.svg.appendChild(el("rect", {
       x: pad.l, y: sy(mean + sd), width: f.iw, height: Math.abs(sy(mean - sd) - sy(mean + sd)),
-      fill: "#22d3ee", opacity: .09, rx: 4,
+      fill: "#0d9488", opacity: .09, rx: 4,
     }));
     f.svg.appendChild(el("line", {
       x1: pad.l, x2: pad.l + f.iw, y1: sy(mean), y2: sy(mean),
-      stroke: "#22d3ee", "stroke-width": 1.6, "stroke-dasharray": "6 4",
+      stroke: "#0d9488", "stroke-width": 1.6, "stroke-dasharray": "6 4",
     }));
 
     vals.forEach((v, i) => {
-      const c = el("circle", { cx: sx(i), cy: sy(v), r: 0, fill: "#a78bfa", stroke: "#070b18", "stroke-width": 2 });
+      const c = el("circle", { cx: sx(i), cy: sy(v), r: 0, fill: "#0284c7", stroke: "#ffffff", "stroke-width": 2 });
       f.svg.appendChild(c);
       requestAnimationFrame(() => {
         c.style.transition = `r .5s var(--ease-out) ${i * .08}s`;
         c.setAttribute("r", 6);
       });
       const t = el("text", {
-        x: sx(i), y: pad.t + f.ih + 17, fill: "#5d6d8c", "font-size": 10,
+        x: sx(i), y: pad.t + f.ih + 17, fill: "#64748b", "font-size": 10,
         "text-anchor": "middle", "font-family": "ui-monospace,monospace",
       });
       t.textContent = "s" + (opts.labels ? opts.labels[i] : i);
       f.svg.appendChild(t);
     });
 
-    const mt = el("text", { x: pad.l + f.iw - 2, y: sy(mean) - 7, fill: "#22d3ee", "font-size": 10, "text-anchor": "end", "font-weight": 600 });
+    const mt = el("text", { x: pad.l + f.iw - 2, y: sy(mean) - 7, fill: "#0d9488", "font-size": 10, "text-anchor": "end", "font-weight": 600 });
     mt.textContent = `mean ${(mean * 100).toFixed(2)}% ± ${(sd * 100).toFixed(2)}%`;
     f.svg.appendChild(mt);
 

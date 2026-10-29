@@ -46,7 +46,7 @@ CLASS_FULL = [
     "Fake State (detector blinding)",
     "Time-Shift Attack",
 ]
-CLASS_COLORS = ["#22d3ee", "#f43f5e", "#818cf8", "#a78bfa", "#fbbf24"]
+CLASS_COLORS = ["#0d9488", "#dc2626", "#0284c7", "#7c3aed", "#d97706"]
 
 CLASS_PHYSICS = [
     {
@@ -229,11 +229,40 @@ def trial(cls: int):
 
 
 class SimReq(BaseModel):
-    cls: int = Field(ge=0, le=4)
+    cls: int = Field(default=0, ge=0, le=4)
     channel: str = "fiber"
     blocks: int = Field(default=150, ge=100, le=250)
     onset: int = Field(default=76, ge=55, le=200)
-    seed: int = Field(default=42, ge=0, le=10**6)
+    seed: int = Field(default=42, ge=0, le=10**9)
+
+
+class BlindSimReq(BaseModel):
+    channel: str = "fiber"
+    blocks: int = Field(default=150, ge=100, le=250)
+    seed: int = Field(default=42, ge=0, le=10**9)
+
+
+@app.post("/api/simulate/blind")
+def simulate_blind(req: BlindSimReq):
+    import numpy as np
+    if req.channel not in ("fiber", "free_space"):
+        raise HTTPException(400, "channel must be fiber or free_space")
+    rng = np.random.default_rng(req.seed + 7919)
+    # Realistic prior: 25% Normal, 20% IR, 20% PNS, 20% Fake State, 15% Time-Shift
+    cls = int(rng.choice([0, 1, 2, 3, 4], p=[0.25, 0.20, 0.20, 0.20, 0.15]))
+    onset = int(rng.integers(55, min(req.blocks - 20, 95)))
+    sim = BB84Simulator(raw_photons_per_block=1024, random_state=req.seed)
+    seq = sim.simulate_session(
+        session_id=1, target_attack_class=cls, channel_type=req.channel,
+        blocks_per_session=req.blocks, attack_start_block=onset,
+        attack_mode="multiattack", randomize_nuisance=True,
+    )
+    df = _extractor.extract_from_session(seq)
+    if df.empty:
+        raise HTTPException(400, "session too short for the W=50 window")
+    pkg = _package(df, cls, float(seq.p_eve), onset)
+    pkg["blind"] = True
+    return pkg
 
 
 @app.post("/api/simulate")
