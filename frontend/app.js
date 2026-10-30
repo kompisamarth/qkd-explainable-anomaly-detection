@@ -25,6 +25,21 @@
     mdi: null, bench: null, atlas: 0, drawnOnce: {},
   };
 
+  function fatal(msg) {
+    let bar = document.getElementById("fatalBar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "fatalBar";
+      bar.style.cssText =
+        "position:sticky;top:0;z-index:999;margin:0 0 14px;padding:13px 18px;" +
+        "border-radius:10px;background:#fef2f2;border:1px solid #fecaca;color:#9f1239;" +
+        "font-size:.88rem;line-height:1.5";
+      const w = document.querySelector(".wrap") || document.body;
+      w.insertBefore(bar, w.firstChild);
+    }
+    bar.innerHTML = "<b>Dashboard cannot run.</b> " + msg;
+  }
+
   async function api(path, opts) {
     const r = await fetch(path, opts);
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
@@ -45,6 +60,7 @@
   async function boot() {
     try {
       const h = await api("/healthz");
+    if (!h.model) fatal(h.detail || "The model checkpoint is missing.");
       $("#healthDot").classList.toggle("off", !h.model);
       $("#healthTxt").textContent = h.model ? "MODEL ONLINE" : "MODEL MISSING";
     } catch {
@@ -190,6 +206,7 @@
       renderMonitorStatic();
       startPlay();
     } catch (e) {
+      fatal(esc(e.message));
       $("#verdictA").innerHTML = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div>${esc(e.message)}</div></div>`;
     } finally {
       btn.disabled = false;
@@ -219,6 +236,7 @@
       renderMonitorStatic();
       startPlay();
     } catch (e) {
+      fatal(esc(e.message));
       $("#verdictA").innerHTML = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div>${esc(e.message)}</div></div>`;
     } finally {
       btn.disabled = false;

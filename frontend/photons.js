@@ -17,6 +17,19 @@
     eve: "#dc2626",
   };
 
+  // ctx.roundRect needs Chrome 99+ / Safari 16.4+. It is called every frame, so
+  // on an older browser one throw kills the whole animation loop and the stage
+  // stays blank forever. Fall back to a plain rect.
+  function roundRectSafe(ctx, x, y, w, h, r) {
+    if (typeof ctx.roundRect === "function") { ctx.roundRect(x, y, w, h, r); return; }
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
   function create(canvas) {
     const ctx = canvas.getContext("2d");
     let W = 0, H = 0, dpr = 1;
@@ -63,7 +76,7 @@
       ctx.strokeStyle = color;
       ctx.lineWidth = active ? 2 : 1.4;
       ctx.beginPath();
-      ctx.roundRect(x - 26, y - 26, 52, 52, 12);
+      roundRectSafe(ctx, x - 26, y - 26, 52, 52, 12);
       ctx.fill();
       ctx.stroke();
       ctx.restore();
@@ -75,7 +88,7 @@
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.roundRect(x - 26 - p * 12, y - 26 - p * 12, 52 + p * 24, 52 + p * 24, 12 + p * 6);
+        roundRectSafe(ctx, x - 26 - p * 12, y - 26 - p * 12, 52 + p * 24, 52 + p * 24, 12 + p * 6);
         ctx.stroke();
         ctx.restore();
       }

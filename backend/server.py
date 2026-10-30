@@ -145,8 +145,22 @@ def _csv(name: str) -> Optional[List[Dict[str, Any]]]:
     return pd.read_csv(p).replace({np.nan: None}).to_dict(orient="records")
 
 
+MODEL_HELP = (
+    "The XGBoost checkpoint data/processed/checkpoints/xgb_multiattack.joblib is "
+    "missing. It is produced by the pipeline, not stored in git (*.joblib is "
+    "gitignored). Generate it with:  python scripts/06_generate_multiattack_dataset.py  "
+    "then  python scripts/07_train_multiattack_classifiers.py"
+)
+
+
 def _package(df: pd.DataFrame, cls: int, p_eve: float, onset: int) -> Dict[str, Any]:
     """Turn a feature frame plus model predictions into the wire format."""
+    if _model is None and "pred_class" not in df.columns:
+        # Without a model there are no predictions to package. Say so clearly:
+        # previously this fell through and raised KeyError('pred_class') as an
+        # opaque 500, which looked like dead buttons in the UI.
+        raise HTTPException(503, MODEL_HELP)
+
     if _model is not None and "pred_class" not in df.columns:
         probs = _model.predict_proba(df[FEATURE_NAMES_63].values)
         df = df.copy()
@@ -288,7 +302,7 @@ def explain(session_id: str, block: int):
     if df is None:
         raise HTTPException(404, "session expired - re-run the scenario")
     if _model is None:
-        raise HTTPException(503, "model checkpoint not loaded")
+        raise HTTPException(503, MODEL_HELP)
     row = df[df["block_index"] == block]
     if row.empty:
         raise HTTPException(404, "block not in session")
@@ -342,7 +356,8 @@ def benchmarks():
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True, "model": _model is not None}
+    return {"ok": True, "model": _model is not None,
+            "detail": None if _model is not None else MODEL_HELP}
 
 
 # --------------------------------------------------------------------------
