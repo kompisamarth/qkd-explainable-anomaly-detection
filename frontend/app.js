@@ -66,25 +66,36 @@
     
     // Start with Blind Mode by default
     selectScenario(0);
+    applyMode();
     runBlind();
   }
 
   // ---------------------------------------------------------------- controls & modes
+  // Applies blind/guided visibility. This must also run at boot: the app starts
+  // in blind mode, and while this logic lived only inside the mode-toggle click
+  // handler the first load left the guided panels on screen - including the
+  // "Ground truth regime" readout, which gave the answer away before Reveal.
+  function applyMode() {
+    const isBlind = (S.mode === "blind");
+    $("#blindSide").style.display = isBlind ? "" : "none";
+    $("#guidedSide").style.display = isBlind ? "none" : "";
+    $("#lookBanner").style.display = isBlind ? "none" : "";
+    $("#scnPhysicsPanel").style.display = isBlind ? "none" : "";
+    $("#revealPanel").style.display = isBlind ? "" : "none";
+    if (isBlind) {
+      $("#scnTitle").textContent = "Autonomous Quantum Channel Monitor";
+      $("#scnHead").textContent =
+        "Real-time pulse tracking and 63-dimensional causal feature extraction.";
+    }
+  }
+
   function setupControls() {
     $$("#modeSeg button").forEach(b => {
       b.addEventListener("click", () => {
         $$("#modeSeg button").forEach(x => x.classList.toggle("on", x === b));
         S.mode = b.dataset.mode;
-        const isBlind = (S.mode === "blind");
-        $("#blindSide").style.display = isBlind ? "" : "none";
-        $("#guidedSide").style.display = isBlind ? "none" : "";
-        $("#lookBanner").style.display = isBlind ? "none" : "";
-        $("#scnPhysicsPanel").style.display = isBlind ? "none" : "";
-        $("#revealPanel").style.display = isBlind ? "" : "none";
-        
-        if (isBlind) {
-          $("#scnTitle").textContent = "Autonomous Quantum Channel Monitor";
-          $("#scnHead").textContent = "Real-time pulse tracking and 63-dimensional causal feature extraction.";
+        applyMode();
+        if (S.mode === "blind") {
           runBlind();
         } else {
           selectScenario(0);
@@ -371,11 +382,16 @@
     $("#scrub").value = S.idx;
     syncRange();
 
-    const active = s.blocks[S.idx] >= s.onset && s.class_id !== 0;
+    // The canvas draws Eve straight from ground truth, so in blind mode it has
+    // to stay sealed until Reveal - otherwise the status line announces the
+    // attack and its exact interception rate before the analyst has judged.
+    const reveal = S.revealed || S.mode === "guided";
+    const active = s.blocks[S.idx] >= s.onset && s.class_id !== 0 && reveal;
     S.stage.set({
-      attackActive: active, attackClass: s.class_id,
+      attackActive: active, attackClass: reveal ? s.class_id : 0,
       intercept: active ? Math.max(s.p_eve, .15) : 0,
       qber: s.qber[S.idx], efficiency: s.efficiency[S.idx],
+      blind: !reveal,
     });
   }
 

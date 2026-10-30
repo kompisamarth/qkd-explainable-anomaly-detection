@@ -23,7 +23,7 @@
     let photons = [], flashes = [], raf = null, last = 0, acc = 0, t = 0;
 
     const state = {
-      attackActive: false, attackClass: 0, intercept: 0,
+      attackActive: false, attackClass: 0, intercept: 0, blind: false,
       qber: 0.03, efficiency: 0.5, running: true, speed: 1,
     };
 
@@ -253,7 +253,9 @@
         ctx.fillText(`EVE ACTIVE · intercepting ${(state.intercept * 100).toFixed(0)}% of pulses`, 14, 20);
       } else {
         ctx.fillStyle = C.sifted;
-        ctx.fillText("CHANNEL CLEAR · no eavesdropper", 14, 20);
+        ctx.fillText(state.blind
+          ? "LINK UNDER ANALYSIS · ground truth withheld"
+          : "CHANNEL CLEAR · no eavesdropper", 14, 20);
       }
 
       ctx.fillStyle = C.text;
