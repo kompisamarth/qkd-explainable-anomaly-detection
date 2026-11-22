@@ -7,8 +7,9 @@ Classes:
 - 3: Fake State (Detector Blinding)
 - 4: Time-Shift Attack
 
-Performs 5-fold stratified cross-validation on the 63 physics-informed features,
-trains the final model, and persists the checkpoint.
+Cross-validates with GroupKFold over SESSION ids (audit L-2: the former row-level
+StratifiedKFold put overlapping windows of one session in both folds), trains the
+final model on the full training split, and persists the checkpoint.
 """
 
 import sys
@@ -19,7 +20,7 @@ import yaml
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import GroupKFold
 from sklearn.metrics import accuracy_score, f1_score, precision_score, log_loss
 import xgboost as xgb
 
@@ -27,11 +28,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
 from src.features.time_series import FEATURE_NAMES_63
+from src.data.dataset import model_features
 
 
 def load_config() -> dict:
-    with open(ROOT_DIR / "config.yaml", "r") as f:
-        return yaml.safe_load(f)
+    """config.yaml merged with config/physics.yaml (see src/config.py)."""
+    from src.config import load_config as _load
+    return _load()
 
 
 def main():
@@ -55,31 +58,33 @@ def main():
     train_df = pd.read_csv(train_path)
     test_df = pd.read_csv(test_path)
 
-    X_train = train_df[FEATURE_NAMES_63].values
+    feats = model_features(train_df)
+    X_train = train_df[feats].values
     y_train = train_df["block_class"].values.astype(int)
+    groups = train_df["session_id"].values
+    n_classes = int(max(train_df["block_class"].max(), test_df["block_class"].max())) + 1
 
-    X_test = test_df[FEATURE_NAMES_63].values
+    X_test = test_df[feats].values
     y_test = test_df["block_class"].values.astype(int)
 
-    print(f"  Training shape:  {X_train.shape} across 5 classes")
+    print(f"  Training shape:  {X_train.shape} across {n_classes} classes")
     print(f"  Test shape:      {X_test.shape}")
 
     # -------------------------------------------------------------
     # 1. 5-Fold Stratified Cross-Validation on Train Set
     # -------------------------------------------------------------
-    print("\n[1/3] Running 5-Fold Stratified Cross-Validation on Training Partition...")
-    # Subsample for CV if dataset is huge for rapid tuning
-    cv_subsample_idx = np.random.default_rng(seed).choice(len(X_train), size=min(len(X_train), 100000), replace=False)
-    X_cv = X_train[cv_subsample_idx]
-    y_cv = y_train[cv_subsample_idx]
+    n_folds = int(ma_cfg.get("cv_folds", 5))
+    print(f"\n[1/3] Running {n_folds}-fold GroupKFold (by session) cross-validation on the training split...")
+    X_cv, y_cv = X_train, y_train
 
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+    gkf = GroupKFold(n_splits=n_folds)
     cv_accs, cv_f1s, cv_losses = [], [], []
 
-    for fold, (train_idx, val_idx) in enumerate(skf.split(X_cv, y_cv), 1):
+    for fold, (train_idx, val_idx) in enumerate(gkf.split(X_cv, y_cv, groups), 1):
+        assert not set(groups[train_idx]) & set(groups[val_idx]), "session leaked across folds"
         fold_model = xgb.XGBClassifier(
             objective="multi:softprob",
-            num_class=5,
+            num_class=n_classes,
             eval_metric="mlogloss",
             tree_method="hist",
             n_estimators=150,
@@ -96,7 +101,7 @@ def main():
 
         acc = accuracy_score(y_cv[val_idx], preds)
         f1 = f1_score(y_cv[val_idx], preds, average="macro")
-        loss = log_loss(y_cv[val_idx], probs)
+        loss = log_loss(y_cv[val_idx], probs, labels=list(range(n_classes)))
 
         cv_accs.append(acc)
         cv_f1s.append(f1)
@@ -114,7 +119,7 @@ def main():
     t0 = time.time()
     final_model = xgb.XGBClassifier(
         objective="multi:softprob",
-        num_class=5,
+        num_class=n_classes,
         eval_metric="mlogloss",
         tree_method="hist",
         n_estimators=xgb_cfg.get("n_estimators", 250),
@@ -142,15 +147,19 @@ def main():
     metrics_dir = ROOT_DIR / "results" / "metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
     cv_summary = {
-        "model": "XGBClassifier (multi:softprob, 5 classes)",
-        "num_features": len(FEATURE_NAMES_63),
-        "cv_folds": 5,
+        "model": f"XGBClassifier (multi:softprob, {n_classes} classes)",
+        "num_features": len(feats),
+        "features": feats,
+        "cv_folds": n_folds,
+        "cv_split": "GroupKFold by session_id",
+        "engine": ma_cfg.get("engine", "calibrated"),
         "mean_accuracy": float(np.mean(cv_accs)),
         "std_accuracy": float(np.std(cv_accs)),
         "mean_macro_f1": float(np.mean(cv_f1s)),
         "std_macro_f1": float(np.std(cv_f1s)),
         "mean_logloss": float(np.mean(cv_losses)),
         "train_samples": len(X_train),
+        "train_sessions": int(len(np.unique(groups))),
         "training_time_sec": float(t1 - t0),
     }
     with open(metrics_dir / "cv_multiattack_xgboost.json", "w") as f:

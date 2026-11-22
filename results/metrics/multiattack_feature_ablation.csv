@@ -1,6 +1,6 @@
 group_name,display_name,features_removed,ablated_accuracy,accuracy_drop_pct
-statistical,Statistical,7,85.95940594059405,0.3257425742574327
-spectral_temporal,Spectral Temporal,12,85.9138613861386,0.37128712871287917
-burst_instability,Burst Instability,10,85.8930693069307,0.3920792079207871
-channel_interaction,Channel Interaction,22,80.92772277227724,5.35742574257425
-basis_dependent,Basis Dependent,12,79.12178217821783,7.163366336633658
+statistical,Statistical,7,53.910891089108915,0.0
+burst_instability,Burst Instability,10,54.26096181046675,0.0
+spectral_temporal,Spectral Temporal,12,53.90912305516265,0.0
+basis_dependent,Basis Dependent,12,53.843705799151344,0.0
+channel_interaction,Channel Interaction,22,48.882602545968886,4.745403111739748

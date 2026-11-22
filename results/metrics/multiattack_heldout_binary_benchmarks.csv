@@ -1,0 +1,4 @@
+detector,split,fnr,fpr,recall,precision,tp,fn,fp,tn
+XGBoost (any attack class),heldout,0.38995555555555556,0.42688715953307393,0.6100444444444444,0.7144678968326262,27452,17548,10971,14729
+Fixed 11% QBER threshold (asymptotic),heldout,0.9648666666666667,0.0,0.035133333333333336,1.0,1581,43419,0,25700
+Finite-size 11% (Wilson lower bound > threshold),heldout,0.9908,0.0,0.0092,1.0,414,44586,0,25700

@@ -1,0 +1,8 @@
+,Normal Channel,Fractional Intercept-Resend,Photon Number Splitting,Detector Blinding (Fake State),Time-Shift,Trojan Horse (simplified),Beam Splitting
+Normal Channel,18020,53,439,576,1070,214,188
+Fractional Intercept-Resend,424,5469,22,2,58,22,3
+Photon Number Splitting,4509,25,456,212,595,74,129
+Detector Blinding (Fake State),2501,0,159,2954,266,21,99
+Time-Shift,2213,35,229,173,3245,25,80
+Trojan Horse (simplified),5292,99,86,208,175,52,88
+Beam Splitting,5146,0,86,241,316,75,136

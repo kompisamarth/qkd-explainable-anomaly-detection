@@ -4,6 +4,9 @@ Generates:
 - Figure: Global SHAP Feature Importance Bar Plot (Top 20 Features, 300 DPI, Fig 5)
 - Figure: Leave-One-Group-Out Feature Ablation Study Bar Chart (300 DPI, Fig 6)
 - Metrics Table: Feature ablation accuracy drops for the 5 feature categories
+
+Both are computed on the session-held-out test split (train and test share no
+session), so SHAP and ablation describe generalisation to unseen sessions.
 """
 
 import sys
@@ -23,7 +26,8 @@ import xgboost as xgb
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
-from src.features.time_series import FEATURE_NAMES_63, FEATURE_GROUPS_63
+from src.features.time_series import FEATURE_NAMES_63, FEATURE_GROUPS_63, FEATURE_NAMES_DECOY
+from src.data.dataset import model_features
 
 
 CATEGORY_COLORS = {
@@ -41,8 +45,9 @@ for grp, f_list in FEATURE_GROUPS_63.items():
 
 
 def load_config() -> dict:
-    with open(ROOT_DIR / "config.yaml", "r") as f:
-        return yaml.safe_load(f)
+    """config.yaml merged with config/physics.yaml (see src/config.py)."""
+    from src.config import load_config as _load
+    return _load()
 
 
 def main():
@@ -66,10 +71,18 @@ def main():
     test_df = pd.read_csv(test_path)
     model = joblib.load(ckpt_path)
 
-    X_train = train_df[FEATURE_NAMES_63].values
+    feats = model_features(train_df)
+    groups_map = dict(FEATURE_GROUPS_63)
+    if any(f in feats for f in FEATURE_NAMES_DECOY):
+        groups_map["decoy_state"] = [f for f in FEATURE_NAMES_DECOY if f in feats]
+        FEATURE_TO_GROUP.update({f: "decoy_state" for f in groups_map["decoy_state"]})
+        CATEGORY_COLORS.setdefault("decoy_state", "#8c564b")
+    n_classes = int(model.n_classes_) if hasattr(model, "n_classes_") else int(train_df["block_class"].max()) + 1
+
+    X_train = train_df[feats].values
     y_train = train_df["block_class"].values.astype(int)
 
-    X_test = test_df[FEATURE_NAMES_63].values
+    X_test = test_df[feats].values
     y_test = test_df["block_class"].values.astype(int)
 
     # -------------------------------------------------------------
@@ -93,9 +106,9 @@ def main():
         global_imp = np.mean(np.mean(np.abs(shap_values), axis=0), axis=1)
 
     imp_df = pd.DataFrame({
-        "feature": FEATURE_NAMES_63,
+        "feature": feats,
         "importance": global_imp,
-        "category": [FEATURE_TO_GROUP.get(f, "other") for f in FEATURE_NAMES_63],
+        "category": [FEATURE_TO_GROUP.get(f, "other") for f in feats],
     }).sort_values("importance", ascending=True)
 
     imp_df.to_csv(metrics_dir / "multiattack_feature_importance_shap.csv", index=False)
@@ -107,13 +120,13 @@ def main():
     plt.barh(top20["feature"], top20["importance"], color=bar_colors, alpha=0.85, edgecolor="black", lw=0.5)
 
     plt.xlabel("Mean |SHAP value| (Average Impact on Model Output)", fontweight="bold")
-    plt.title("Global Physics-Informed Feature Importance (XGBoost, 5 Classes)", fontweight="bold", fontsize=12)
+    plt.title(f"Global feature importance (XGBoost, {n_classes} classes, simulated data)", fontweight="bold", fontsize=12)
     plt.grid(True, axis="x", alpha=0.3, ls="--")
 
     # Add custom legend for categories
     handles = [
         plt.Rectangle((0, 0), 1, 1, color=CATEGORY_COLORS[c], label=c.replace("_", " ").title())
-        for c in ["channel_interaction", "basis_dependent", "burst_instability", "spectral_temporal", "statistical"]
+        for c in list(groups_map)
     ]
     plt.legend(handles=handles, title="Physics Feature Category", loc="lower right", fontsize=8.5)
     plt.tight_layout()
@@ -138,16 +151,16 @@ def main():
     X_tr_sub = X_train[train_sub_idx]
     y_tr_sub = y_train[train_sub_idx]
 
-    for grp_name, remove_features in FEATURE_GROUPS_63.items():
+    for grp_name, remove_features in groups_map.items():
         print(f"  Ablating group: {grp_name} ({len(remove_features)} features removed)...")
-        remain_idx = [i for i, f in enumerate(FEATURE_NAMES_63) if f not in remove_features]
+        remain_idx = [i for i, f in enumerate(feats) if f not in remove_features]
 
         X_tr_abl = X_tr_sub[:, remain_idx]
         X_te_abl = X_test[:, remain_idx]
 
         m_abl = xgb.XGBClassifier(
             objective="multi:softprob",
-            num_class=5,
+            num_class=n_classes,
             eval_metric="mlogloss",
             tree_method="hist",
             n_estimators=150,
@@ -185,7 +198,7 @@ def main():
         plt.text(w + 0.1, bar.get_y() + bar.get_height() / 2, f"+{w:.2f}% drop", va="center", fontweight="bold", fontsize=9)
 
     plt.xlabel("Accuracy Drop When Group Removed (%)", fontweight="bold")
-    plt.title("Leave-One-Group-Out Feature Ablation Study (5 Classes)", fontweight="bold", fontsize=12)
+    plt.title(f"Leave-one-group-out ablation ({n_classes} classes, simulated data)", fontweight="bold", fontsize=12)
     plt.grid(True, axis="x", alpha=0.3, ls="--")
     plt.xlim(0, max(abl_df["accuracy_drop_pct"]) + 2.0)
     plt.tight_layout()
