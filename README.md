@@ -1,12 +1,86 @@
 # Explainable ML for Eavesdropping Detection and Device-Assumption Monitoring in QKD
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![tests](https://github.com/kompisamarth/qkd-explainable-anomaly-detection/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![IEEE Format](https://img.shields.io/badge/Paper-IEEE%20EL%20Conference-orange.svg)](#)
 
 A research pipeline and benchmark implementation for explainable, low-latency machine learning detection of stealthy attacks on Quantum Key Distribution. It covers the traditional **BB84** protocol, a **Sending-or-Not-Sending Twin-Field QKD (SNS-TF-QKD)** simulator, and — from Phase 3 — a **source-side side-channel monitor** targeting the transmitter light-injection attacks that no security proof currently covers.
 
-**Project status:** Phase 1 and Phase 2 complete (Sections 7–10). Phase 3 is specified in [Section 3](#3-phase-3-roadmap) and not yet implemented.
+**Project status:** Phase 1 and Phase 2 complete. The 2026-11 revision replaced the multi-attack
+simulator with a physically calibrated one and re-evaluated everything; see
+[Section 0](#0-current-results-and-one-command-reproduction). Phase 3 is specified in
+[Section 3](#3-phase-3-roadmap) and not yet implemented.
+
+> **All results are from simulation** except the files prefixed `real_`, which use benign
+> telemetry from commercial QKD systems (Zenodo 21792844). Read [LIMITATIONS.md](LIMITATIONS.md)
+> before quoting any number.
+
+---
+
+## 0. Current Results and One-Command Reproduction
+
+| Document | What it covers |
+|---|---|
+| [AUDIT.md](AUDIT.md) | Bugs, leakage risks and unrealistic parameters found before the revision, and where each CSV comes from |
+| [CHANGELOG.md](CHANGELOG.md) | Every change, section by section, with the metrics it moved and why |
+| [config/physics.yaml](config/physics.yaml) | Every physical parameter, with its literature source or an explicit ASSUMPTION label |
+| [docs/ATTACK_MODELS.md](docs/ATTACK_MODELS.md) | The six attack models and what each one simplifies |
+| [DATA_CARD.md](DATA_CARD.md) | Every dataset column, its unit and how it is computed |
+| [DATASETS.md](DATASETS.md) | Survey of public QKD datasets; how the real Zenodo telemetry is used |
+| [LIMITATIONS.md](LIMITATIONS.md) | Simulated data, simplified attacks, asymptotic assumptions, no hardware validation |
+
+### Reproduce
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
+pip install -r requirements-lock.txt   # exact versions used for results/ (Python 3.13)
+python reproduce.py                    # everything, ~2.5 h on 24 cores (or: make all)
+python reproduce.py --quick            # tests + smoke dataset + 2-seed evaluation, ~3 min
+python run_dashboard.py                # http://127.0.0.1:8000
+```
+
+`reproduce.py` runs the unit tests first. If the physics checks fail (QBER ≠ 0 without noise,
+≠ 25% under full intercept-resend, ≠ e_d with misalignment only), it stops before generating
+data. GitHub Actions runs the tests, a smoke dataset and a smoke evaluation on every push.
+
+### Headline results (simulated, 7 classes, 5 seeds, mean and 95% CI)
+
+| Detector (attack vs normal) | Missed attacks (FNR) | False alarms (FPR) | 7-class macro-F1 |
+|---|---|---|---|
+| Fixed 11% QBER threshold (window, block, or finite-size Wilson) | 100% | 0% | — |
+| XGBoost | 57.3% [55.1, 59.6] | 15.5% [13.9, 17.0] | 0.393 [0.372, 0.413] |
+| Random Forest | 62.6% | 9.5% | 0.375 |
+| SVM-RBF | 39.2% | 48.5% | 0.330 |
+| XGBoost **with decoy states** | 35.0% | 10.5% | 0.613 |
+
+* **What it detects.** Intercept-resend is detected reliably (F1 0.93), blinding and time-shift
+  partly (0.58 / 0.47). PNS, Trojan horse and beam splitting leave Bob's QBER telemetry
+  unchanged by design and sit near chance. Decoy states raise PNS F1 from 0.08 to 0.77.
+* **Where it fails to generalise.**
+  * Unseen distances (80–110 km): FPR rises to 36%.
+  * Free-space fading: FPR rises to 50%.
+  * Real benign telemetry from a Toshiba system: every block is flagged, because its baseline
+    QBER is higher than the simulator's.
+* **Comparison with the old numbers.** The earlier 85.6% accuracy (5 classes) came from simulator
+  artefacts and row-level cross-validation; [CHANGELOG.md](CHANGELOG.md) explains each artefact.
+
+Results files: `results/metrics/multiattack_model_comparison*.csv`,
+`multiattack_per_class_metrics_multiseed*.csv`, `multiattack_channel_generalization.csv`,
+`multiattack_heldout_generalization.csv`, `multiattack_latency_vs_intensity.csv`,
+`real_vs_sim_qber_calibration.csv`, `real_data_ood_summary.json`.
+
+### Optional: QpiAI Quantum SDK
+
+`qpiai_extras/` (isolated; the pipeline never imports it) adds the following, all with NumPy and
+Qiskit fallbacks when no QpiAI account is configured:
+* QRNG bits for Alice;
+* a circuit-level BB84 / intercept-resend check against the NumPy simulator;
+* Bloch-sphere and circuit figures.
+
+Put the key in `QPIAI_API_KEY` or a git-ignored `qcloud.env`. Never commit it. Run
+`python -m qpiai_extras.run_demo`.
 
 ---
 
@@ -192,119 +266,64 @@ WS-1 and WS-2 are independent and can proceed in parallel. WS-3 depends on WS-2.
 
 ```text
 qkd-explainable-anomaly-detection/
-├── .gitignore
-├── README.md
-├── requirements.txt
-├── config.yaml                  # Simulation & ML hyperparameters
-├── run_dashboard.py             # Launches the dashboard (FastAPI + static frontend)
-├── backend/
-│   └── server.py                # FastAPI: simulate / explain / mdi / benchmarks endpoints
-├── frontend/                    # No-build animated UI (no npm, no bundler)
-│   ├── index.html               # Six views
-│   ├── styles.css               # Dark quantum-lab design system + motion
-│   ├── charts.js                # Animated SVG charts (draw-in, count-up, dot plots)
-│   ├── photons.js               # Canvas BB84 channel: Alice -> Eve -> Bob
-│   └── app.js                   # State, routing, playback, rendering
-├── data/
-│   ├── raw/                     # Raw simulated session sequences (.parquet / .csv)
-│   └── processed/               # Sliding-window time-series dataset (.csv)
-│       └── trial_sessions/      # Replayable one-per-class sessions used by the dashboard
-├── results/
-│   ├── figures/                 # High-res publication plots (Latency, ROC, SHAP, Generalization)
-│   └── metrics/                 # JSON/CSV benchmark tables for the IEEE paper
+├── config.yaml                  # pipeline + ML settings
+├── config/physics.yaml          # every physical parameter, with sources
+├── reproduce.py, Makefile       # one-command reproduction
+├── requirements.txt             # loose bounds; requirements-lock.txt = exact versions
+├── AUDIT.md CHANGELOG.md DATA_CARD.md DATASETS.md LIMITATIONS.md LICENSE CITATION.cff
+├── backend/server.py            # FastAPI: simulate (blind/guided/custom), explain, benchmarks, channel, data, mdi
+├── frontend/                    # no-build UI: 8 tabs, every chart labelled with source + seed
 ├── src/
+│   ├── config.py                # merges config.yaml + config/physics.yaml; config hash, git commit
 │   ├── simulator/
-│   │   ├── bb84_engine.py       # Alice state prep, Bob measurement, Sifting, QBER calculation
-│   │   ├── noise_models.py      # Fiber (Stationary Depolarizing) & Free-Space (Log-Normal Scintillation)
-│   │   ├── eve_attacks.py       # 5 classes: Benign, Fractional IR, PNS, Fake State, Time-Shift
-│   │   ├── tf_qkd.py            # SNS Twin-Field QKD, decoy-state BB84 key rate, PLOB bound
-│   │   ├── mdi_qkd.py           # MDI-QKD relay model + detector-attack comparison
-│   │   └── source_side.py       # [Phase 3] Transmitter telemetry & light-injection attacks
-│   ├── features/
-│   │   └── time_series.py       # Causal sliding-window extraction (14-feature and 63-feature banks)
-│   ├── models/
-│   │   ├── hoeffding_baseline.py# Lee et al. (2022) classical dynamic threshold
-│   │   ├── ml_classifiers.py    # Random Forest & XGBoost wrappers with calibrated FPR
-│   │   └── explainability.py    # SHAP TreeExplainer integration & feature attribution
-│   └── evaluation/
-│       └── benchmarks.py        # Latency (Delta T), FPR control, Cross-channel degradation
+│   │   ├── calibrated.py        # calibrated WCP BB84 (7 classes, decoy option, SPAD/SNSPD, FSO fading)
+│   │   ├── bb84_engine.py       # legacy pulse-level engine (scripts 01-05) + Qiskit check
+│   │   ├── eve_attacks.py, noise_models.py   # legacy attack and noise models
+│   │   ├── tf_qkd.py, mdi_qkd.py             # TF-QKD / MDI-QKD / decoy BB84 key rates, PLOB
+│   ├── data/
+│   │   ├── dataset.py           # session-seeded generation, session splits, export + sidecars, leakage audit
+│   │   └── real_telemetry.py    # Zenodo 21792844 loader (real benign telemetry)
+│   ├── features/time_series.py  # causal 63-feature extractor (+ optional decoy group)
+│   ├── evaluation/              # finite-size CIs, security metrics, legacy benchmarks
+│   └── models/                  # Hoeffding baseline, RF/XGB wrappers, SHAP
 ├── scripts/
-│   ├── 01_verify_physics.py     # Analytical and Qiskit sanity check for BB84 physics
-│   ├── 02_generate_dataset.py   # Multi-condition synthetic dataset generator
-│   ├── 03_run_benchmarks.py     # Train, evaluate latency & cross-channel shift
-│   ├── 04_explain_and_plot.py   # Generate SHAP plots and 300 DPI publication figures
-│   ├── 05_modern_qkd_tfqkd.py   # Twin-Field QKD: key rate vs distance, phase-attack detection
-│   ├── 06_generate_multiattack_dataset.py  # Phase 2: 5-class multi-attack dataset generator
-│   ├── 07_train_multiattack_classifiers.py # Phase 2: Train & tune multi-class XGBoost
-│   ├── 08_evaluate_multiattack.py          # Phase 2: Benchmark metrics, confusion matrix & ROC
-│   ├── 09_explain_and_ablation.py          # Phase 2: SHAP ranking & feature group ablation
-│   ├── 10_multiseed_evaluation.py          # P2.1: leakage audit + multi-seed mean/std benchmarks
-│   └── 11_mdi_protocol_comparison.py       # MDI-QKD curves, detector attack, trial datasets
-└── tests/                       # pytest suite: 32 tests (BB84, TF-QKD, MDI-QKD, 5-class, leakage guard)
+│   ├── 01-05                    # legacy 3-class pipeline and TF-QKD
+│   ├── 06_generate_multiattack_dataset.py  # calibrated train / test / held-out (+ --smoke)
+│   ├── 07_train_multiattack_classifiers.py # XGBoost, GroupKFold by session
+│   ├── 08_evaluate_multiattack.py          # test + held-out, threshold baselines
+│   ├── 09_explain_and_ablation.py          # SHAP + feature-group ablation
+│   ├── 10_multiseed_evaluation.py          # RF / XGB / SVM, 5 seeds, CIs (+ --decoy)
+│   ├── 11_mdi_protocol_comparison.py       # MDI-QKD curves + trial sessions
+│   └── 12_real_data_evaluation.py          # real-data calibration + OOD test (+ --download)
+├── qpiai_extras/                # optional QpiAI SDK integration (QRNG, circuits, figures)
+├── docs/ATTACK_MODELS.md
+└── tests/                       # 59 pytest tests, incl. the physics checks
 ```
-
-Entries marked `[Phase 3]` are specified in Section 3 and not yet implemented.
 
 ---
 
 ## 5. Quickstart Guide
 
-### Prerequisites
-- Python 3.10+
-- Recommended virtual environment:
+See [Section 0](#0-current-results-and-one-command-reproduction) for `reproduce.py`. To run
+single steps:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### Reproducing Experimental Results
-
-Execute the sequential experimental pipeline:
-
-```bash
-# 1. Verify quantum state physics & channel error equations
-python scripts/01_verify_physics.py
-
-# 2. Generate multi-regime synthetic time-series datasets
-python scripts/02_generate_dataset.py
-
-# 3. Train models and evaluate Latency (Delta T) & Cross-Channel Generalization
-python scripts/03_run_benchmarks.py
-
-# 4. Generate SHAP explainability analyses and publication figures
-python scripts/04_explain_and_plot.py
-
-# 5. Modern protocol: Sending-or-Not-Sending Twin-Field QKD
-python scripts/05_modern_qkd_tfqkd.py
-
-# 6. Phase 2: Generate 5-class multi-attack dataset (63 features)
-python scripts/06_generate_multiattack_dataset.py
-
-# 7. Phase 2: Train multi-class XGBoost classifier
-python scripts/07_train_multiattack_classifiers.py
-
-# 8. Phase 2: Evaluate benchmarks, confusion matrix & ROC curves
-python scripts/08_evaluate_multiattack.py
-
-# 9. Phase 2: SHAP explainability & feature group ablation
-python scripts/09_explain_and_ablation.py
-
-# 10. P2.1: leakage audit and multi-seed benchmarks (mean +/- std over 5 seeds)
-python scripts/10_multiseed_evaluation.py
-
-# 11. MDI-QKD curves, detector-attack demo, and trial datasets
-python scripts/11_mdi_protocol_comparison.py
-
-# 12. Launch the dashboard at http://127.0.0.1:8000
-python run_dashboard.py
-
-# Run the test suite (32 tests)
+python scripts/06_generate_multiattack_dataset.py   # calibrated dataset (--smoke for a tiny one)
+python scripts/07_train_multiattack_classifiers.py  # XGBoost checkpoint for the dashboard
+python scripts/10_multiseed_evaluation.py --seeds 42 43 44 45 46 --sessions-per-class 200 [--decoy]
+python scripts/12_real_data_evaluation.py [--download]
 python -m pytest
 ```
 
-Approximate runtimes on a 24-core desktop: 01 ≈ 2 s, 02 ≈ 70 s, 03 ≈ 60 s, 04 ≈ 10 s, 05 ≈ 3 min.
+Approximate runtimes on a 24-core desktop:
+
+| Script | Runtime |
+|---|---|
+| 06 | ≈ 100 s |
+| 07 | ≈ 70 s |
+| 09 | ≈ 80 s |
+| 10 | ≈ 75 min (SVM-dominated; ≈ 47 min with `--decoy`) |
+| 12 | ≈ 1 min |
 
 ---
 
@@ -454,7 +473,12 @@ Extracted over causal backward-looking sliding windows ($W=50$) with zero future
 4. **Basis-Dependent (12):** `qber_rectilinear` ($q_Z$), `qber_diagonal` ($q_X$), `basis_asymmetry`, `basis_ratio`, `basis_burst_energy_z`, `basis_burst_energy_x`, `basis_variance_ratio`, `basis_cross_correlation`, `basis_skewness_diff`, `basis_kurtosis_diff`, `sift_ratio_z`, `sift_ratio_x`.
 5. **Channel Interaction & Multi-Scale (22):** `key_generation_rate`, `transmission_efficiency`, `qber_loss_interaction`, `qber_loss_product`, `loss_anomaly_index`, `dark_count_ratio`, nested multi-scale statistics (`W=10, 25, 50` mean, std, fano, drift), `error_clustering_coefficient`, `loss_gradient`, `efficiency_entropy`, `qber_stability_index`.
 
-### 10.3 Experimental Benchmarks (leakage-free, 5 independent seeds)
+### 10.3 Experimental Benchmarks (superseded; see Section 0)
+
+> The numbers in 10.3–10.5 are from the 5-class legacy engine and are kept for the record.
+> The audit ([AUDIT.md](AUDIT.md)) found further artefacts in that engine: every class except
+> PNS treated pulses as perfect single photons, benign channels were stationary, and CV was
+> row-level. Current results are in Section 0 and CHANGELOG.md.
 
 The originally committed Phase 2 figure was 99.93% accuracy. **That number was an artefact of the simulator, not a generalization estimate**, and it has been corrected. Section 10.5 documents exactly what was wrong and how it was fixed.
 
@@ -573,19 +597,18 @@ Given discrete error sequence $E = [e_1, e_2, \dots, e_t]$, feature vectors $x_t
 
 ## 12. Limitations
 
-* **Everything is simulated.** There is no hardware in this project, and no measurement from a physical QKD system.
-* **Phase 2 accuracy has been corrected** from 99.93% to 85.63% ± 1.36% after removing label leakage (Section 10.5). Residual single-feature separability is about 0.93 AUC, reflecting genuine physical differences between the attacks rather than simulator artefacts.
-* **Attack models are phenomenological.** The fake-state, time-shift and PNS models reproduce the qualitative signature of each attack rather than deriving it from a full device model. The TF-QKD phase-tampering attack is likewise phenomenological, not an optimal collective attack.
-* **Key rates are asymptotic** — no finite-key corrections and no AOPP.
-* **Free-space drift** is a log-normal AR(1) process on the QBER, not a full turbulence model.
-* **MDI-QKD key rates are asymptotic** - no finite-key correction, infinite-decoy limit, and `Y11`/`e11` are leading-order expressions. The detector-attack comparison in Section 2.6 models Eve's best strategy analytically rather than simulating her hardware.
-* **Phase 3 is mostly a specification.** WS-1 (the MDI-QKD model) is implemented; WS-2 to WS-4 - the source-side telemetry simulator and the multi-modal monitor - are not.
+See [LIMITATIONS.md](LIMITATIONS.md). In short:
+* the data is simulated;
+* the attack models are simplified;
+* thresholds and key rates are asymptotic (per-block Wilson intervals are reported);
+* nothing has been validated on hardware;
+* the model does not transfer to the real telemetry tested.
 
 ---
 
 ## 13. Citation
 
-If you use this benchmark codebase in your research, please cite:
+If you use this benchmark codebase in your research, please cite it (see also [CITATION.cff](CITATION.cff)); if you use the real telemetry, cite Zenodo 21792844 as well:
 ```bibtex
 @inproceedings{qkd_explainable_temporal_ml_2026,
   title={Explainable ML for Eavesdropping Detection in Quantum-Key Distribution (BB84)},

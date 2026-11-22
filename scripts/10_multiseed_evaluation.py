@@ -216,10 +216,11 @@ def main():
     ap.add_argument("--heldout-sessions-per-class", type=int, default=50)
     ap.add_argument("--svm-max-rows", type=int, default=12000)
     ap.add_argument("--models", nargs="+", default=["xgb", "rf", "svm"])
+    ap.add_argument("--tag", default="", help="extra output suffix, e.g. smoke (keeps published files untouched)")
     ap.add_argument("--decoy", action="store_true",
                     help="enable signal/decoy/vacuum intensities and the decoy_state features; outputs get a _decoy suffix")
     args = ap.parse_args()
-    suffix = "_decoy" if args.decoy else ""
+    suffix = ("_decoy" if args.decoy else "") + (f"_{args.tag}" if args.tag else "")
     if len(args.seeds) < 5:
         print("  NOTE: fewer than 5 seeds; confidence intervals will be wide.")
 

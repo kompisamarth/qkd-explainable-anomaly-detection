@@ -245,3 +245,30 @@ Per-class F1 for XGBoost, without and with decoy states:
   The 11% thresholds raise no alarms on either channel, so they never false-alarm but also
   never catch anything.
 * **SHAP and ablation** (`scripts/09`) were regenerated on the session-grouped split in Section 2.
+
+## Section 7: Repository and reproducibility
+
+**Added**
+* `reproduce.py` runs the whole pipeline with one command, tests first, stopping at the first
+  failure. `--quick` is a ~1.5 min smoke run whose outputs carry a `_smoke` suffix and are
+  git-ignored, so published results are never overwritten. `--legacy` also reruns scripts 02–05.
+  A `Makefile` wraps these as `all`, `quick`, `legacy`, `test`, `install` and `dashboard`.
+* `requirements-lock.txt`: the exact versions behind `results/` (Python 3.13.7).
+  `requirements.txt` keeps loose bounds and now lists `pytest` and `httpx`.
+* `LICENSE` (MIT, matching the README badge), `CITATION.cff` (including the Zenodo dataset
+  reference), and `LIMITATIONS.md`.
+* `.github/workflows/ci.yml` runs on every push, on Python 3.11 and 3.13: the unit tests, then a
+  smoke dataset, then a smoke evaluation. The physics checks fail the build.
+* `scripts/10 --tag` adds an output suffix.
+* README:
+  * a new Section 0 with current results, document links and reproduction steps;
+  * a refreshed architecture and quickstart;
+  * the old Phase 2 numbers marked as superseded;
+  * limitations pointing to `LIMITATIONS.md`.
+* `.gitignore` covers the generated Parquet datasets, their sidecars, smoke outputs and `qcloud.env`.
+
+**Verified locally:** `python reproduce.py --quick` passes (59 tests, smoke dataset, 2-seed
+evaluation) without touching committed results. The GitHub Actions workflow has not run yet;
+it will run on the first push.
+
+No metric changed.
