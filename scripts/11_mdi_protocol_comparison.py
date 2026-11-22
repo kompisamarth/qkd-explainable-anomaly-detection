@@ -41,9 +41,11 @@ FIGURES = ROOT_DIR / "results" / "figures"
 
 def key_rate_curves():
     print("[1/3] MDI-QKD key rate vs distance (with TF-QKD / BB84 / PLOB comparison)...")
-    mdi_ch = MDIChannelParams()
+    from src.config import load_physics
+    phys = load_physics()
+    mdi_ch = MDIChannelParams(**phys["mdi_qkd"]["channel"])
     mdi = MDIQKD(mdi_ch)
-    tf_ch = ChannelParams()
+    tf_ch = ChannelParams(**phys["tf_qkd"]["channel"])
     sns = SNSTFQKD(tf_ch)
 
     distances = np.arange(0, 451, 25)

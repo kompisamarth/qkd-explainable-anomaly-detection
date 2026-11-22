@@ -209,15 +209,15 @@ class EveAttacker:
         # CLASS 0: NORMAL CHANNEL (Benign)
         # -------------------------------------------------------------
         if self.attack_type == "benign":
-            detection_mask = (self.rng.random(n_pulses) < base_eff) | (
-                self.rng.random(n_pulses) < dark_count_rate
-            )
+            signal_mask = self.rng.random(n_pulses) < base_eff
+            dark_mask = self.rng.random(n_pulses) < dark_count_rate
+            detection_mask = signal_mask | dark_mask
             basis_matches = (bob_bases == alice_bases)
             random_bits = self.rng.integers(0, 2, size=n_pulses, dtype=np.int8)
             bob_bits = np.where(basis_matches, alice_bits, random_bits)
             return {
                 "bob_detected_mask": detection_mask,
-                "bob_detected_bits": bob_bits,
+                "bob_detected_bits": self._dark_bits(bob_bits, signal_mask, dark_mask),
                 "intercepted_mask": np.zeros(n_pulses, dtype=bool),
                 "pns_split_mask": np.zeros(n_pulses, dtype=bool),
                 "blinded_click_mask": np.zeros(n_pulses, dtype=bool),
@@ -229,15 +229,15 @@ class EveAttacker:
         # -------------------------------------------------------------
         elif self.attack_type == "intercept_resend":
             resend_bits, resend_bases, intercepted_mask = self.intercept_and_resend(alice_bits, alice_bases)
-            detection_mask = (self.rng.random(n_pulses) < base_eff) | (
-                self.rng.random(n_pulses) < dark_count_rate
-            )
+            signal_mask = self.rng.random(n_pulses) < base_eff
+            dark_mask = self.rng.random(n_pulses) < dark_count_rate
+            detection_mask = signal_mask | dark_mask
             bob_matches_in = (bob_bases == resend_bases)
             random_bits = self.rng.integers(0, 2, size=n_pulses, dtype=np.int8)
             bob_bits = np.where(bob_matches_in, resend_bits, random_bits)
             return {
                 "bob_detected_mask": detection_mask,
-                "bob_detected_bits": bob_bits,
+                "bob_detected_bits": self._dark_bits(bob_bits, signal_mask, dark_mask),
                 "intercepted_mask": intercepted_mask,
                 "pns_split_mask": np.zeros(n_pulses, dtype=bool),
                 "blinded_click_mask": np.zeros(n_pulses, dtype=bool),
@@ -261,7 +261,9 @@ class EveAttacker:
             single_pass_mask = single_photon_mask & (self.rng.random(n_pulses) < p_single_pass)
 
             # Bob receives multi-photon (split) pulses OR passing single-photon pulses + dark counts
-            detection_mask = multi_pass_mask | single_pass_mask | (self.rng.random(n_pulses) < dark_count_rate)
+            signal_mask = multi_pass_mask | single_pass_mask
+            dark_mask = self.rng.random(n_pulses) < dark_count_rate
+            detection_mask = signal_mask | dark_mask
 
             # Crucial: Eve NEVER disturbs polarization of the forwarded photons!
             basis_matches = (bob_bases == alice_bases)
@@ -270,7 +272,7 @@ class EveAttacker:
 
             return {
                 "bob_detected_mask": detection_mask,
-                "bob_detected_bits": bob_bits,
+                "bob_detected_bits": self._dark_bits(bob_bits, signal_mask, dark_mask),
                 "intercepted_mask": multi_photon_mask,
                 "pns_split_mask": multi_photon_mask,
                 "blinded_click_mask": np.zeros(n_pulses, dtype=bool),
@@ -293,12 +295,14 @@ class EveAttacker:
             blinded_clicks = basis_match_eve_bob & (self.rng.random(n_pulses) < (self.blinding_eff * base_eff))
             
             # Plus small linear-mode dark noise
-            detection_mask = blinded_clicks | (self.rng.random(n_pulses) < (dark_count_rate * 0.1))
+            signal_mask = blinded_clicks
+            dark_mask = self.rng.random(n_pulses) < (dark_count_rate * 0.1)
+            detection_mask = signal_mask | dark_mask
             bob_bits = eve_bits.copy()
 
             return {
                 "bob_detected_mask": detection_mask,
-                "bob_detected_bits": bob_bits,
+                "bob_detected_bits": self._dark_bits(bob_bits, signal_mask, dark_mask),
                 "intercepted_mask": np.ones(n_pulses, dtype=bool),
                 "pns_split_mask": np.zeros(n_pulses, dtype=bool),
                 "blinded_click_mask": blinded_clicks,
@@ -320,7 +324,9 @@ class EveAttacker:
                 np.where(bob_bases == 0, eff_z, eff_x),
                 base_eff,
             )
-            detection_mask = (self.rng.random(n_pulses) < eff_per_pulse) | (self.rng.random(n_pulses) < dark_count_rate)
+            signal_mask = self.rng.random(n_pulses) < eff_per_pulse
+            dark_mask = self.rng.random(n_pulses) < dark_count_rate
+            detection_mask = signal_mask | dark_mask
 
             # Bob measurement outcome
             basis_matches = (bob_bases == alice_bases)
@@ -333,7 +339,7 @@ class EveAttacker:
 
             return {
                 "bob_detected_mask": detection_mask,
-                "bob_detected_bits": bob_bits,
+                "bob_detected_bits": self._dark_bits(bob_bits, signal_mask, dark_mask),
                 "intercepted_mask": shifted_mask,
                 "pns_split_mask": np.zeros(n_pulses, dtype=bool),
                 "blinded_click_mask": np.zeros(n_pulses, dtype=bool),
@@ -342,6 +348,19 @@ class EveAttacker:
 
         else:
             raise ValueError(f"Unsupported attack type: {self.attack_type}")
+
+    def _dark_bits(self, bob_bits: np.ndarray, signal_mask: np.ndarray, dark_mask: np.ndarray) -> np.ndarray:
+        """A click caused only by a dark count carries a uniformly random bit.
+
+        Audit B-1: previously a dark click on a pulse that never arrived was given
+        Alice's bit, so dark counts could never raise the QBER.
+        """
+        dark_only = dark_mask & ~signal_mask
+        if not dark_only.any():
+            return bob_bits
+        out = bob_bits.copy()
+        out[dark_only] = self.rng.integers(0, 2, size=int(dark_only.sum()), dtype=bob_bits.dtype)
+        return out
 
     @staticmethod
     def theoretical_qber(e_0: float, p_eve: float) -> float:

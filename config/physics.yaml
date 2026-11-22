@@ -1,0 +1,194 @@
+# Physical parameters for every simulator in this repository.
+#
+# Each value cites its source. "ASSUMPTION" marks a modelling choice that is not
+# taken from a specific measurement; those are the first things to revisit when
+# calibrating against hardware. Ranges are sampled uniformly per session unless
+# the key says otherwise ("log_" prefix = sampled uniformly in log10).
+#
+# References (short keys used below):
+#   [ITU-G652]   ITU-T Recommendation G.652, standard single-mode fibre (<= 0.2 dB/km at 1550 nm typical)
+#   [Hadfield09] R. H. Hadfield, "Single-photon detectors for optical quantum information
+#                applications", Nature Photonics 3, 696 (2009)
+#   [Marsili13]  F. Marsili et al., "Detecting single infrared photons with 93% system
+#                efficiency", Nature Photonics 7, 210 (2013)
+#   [Gobby04]    C. Gobby, Z. L. Yuan, A. J. Shields, "Quantum key distribution over 122 km
+#                of standard telecom fiber", Appl. Phys. Lett. 84, 3762 (2004)
+#   [Ma05]       X. Ma, B. Qi, Y. Zhao, H.-K. Lo, "Practical decoy state for quantum key
+#                distribution", Phys. Rev. A 72, 012326 (2005)
+#   [Lo05]       H.-K. Lo, X. Ma, K. Chen, "Decoy state quantum key distribution",
+#                Phys. Rev. Lett. 94, 230504 (2005)
+#   [Hwang03]    W.-Y. Hwang, "Quantum key distribution with high loss: toward global secure
+#                communication", Phys. Rev. Lett. 91, 057901 (2003)
+#   [SP00]       P. W. Shor, J. Preskill, "Simple proof of security of the BB84 quantum key
+#                distribution protocol", Phys. Rev. Lett. 85, 441 (2000)
+#   [Andrews05]  L. C. Andrews, R. L. Phillips, "Laser Beam Propagation through Random Media",
+#                2nd ed., SPIE Press (2005)
+#   [Capraro12]  I. Capraro et al., "Impact of turbulence in long range quantum and classical
+#                communications", Phys. Rev. Lett. 109, 200502 (2012)
+#   [Brassard00] G. Brassard, N. Lutkenhaus, T. Mor, B. C. Sanders, "Limitations on practical
+#                quantum cryptography", Phys. Rev. Lett. 85, 1330 (2000)
+#   [Lydersen10] L. Lydersen et al., "Hacking commercial quantum cryptography systems by
+#                tailored bright illumination", Nature Photonics 4, 686 (2010)
+#   [Qi07]       B. Qi, C.-H. F. Fung, H.-K. Lo, X. Ma, "Time-shift attack in practical quantum
+#                cryptosystems", Quantum Inf. Comput. 7, 73 (2007)
+#   [Zhao08]     Y. Zhao, C.-H. F. Fung, B. Qi, C. Chen, H.-K. Lo, "Quantum hacking: Experimental
+#                demonstration of time-shift attack ...", Phys. Rev. A 78, 042333 (2008)
+#   [Gisin06]    N. Gisin, S. Fasel, B. Kraus, H. Zbinden, G. Ribordy, "Trojan-horse attacks on
+#                quantum-key-distribution systems", Phys. Rev. A 73, 022320 (2006)
+#   [Lucamarini15] M. Lucamarini et al., "Practical security bounds against the Trojan-horse
+#                attack in quantum key distribution", Phys. Rev. X 5, 031030 (2015)
+#   [Bennett92]  C. H. Bennett, F. Bessette, G. Brassard, L. Salvail, J. Smolin, "Experimental
+#                quantum cryptography", J. Cryptology 5, 3 (1992)
+#   [Huttner95]  B. Huttner, N. Imoto, N. Gisin, T. Mor, "Quantum cryptography with coherent
+#                states", Phys. Rev. A 51, 1863 (1995)
+#   [Wilson27]   E. B. Wilson, "Probable inference, the law of succession, and statistical
+#                inference", J. Am. Stat. Assoc. 22, 209 (1927)
+
+# ---------------------------------------------------------------------------
+# Calibrated BB84 (multi-attack pipeline, scripts 06-11, dashboard)
+# ---------------------------------------------------------------------------
+calibrated_bb84:
+  source:
+    # Weak coherent pulses, Poisson photon number [Brassard00].
+    mean_photon_number: 0.5           # signal mu; 0.5 is the usual decoy-BB84 choice [Ma05, Lo05]
+    repetition_rate_hz: 1.0e+9        # 1 GHz gated operation, as in [Gobby04]-era systems; ASSUMPTION for dead-time scaling
+    pulses_per_block: 500000          # 0.5 ms block at 1 GHz; ASSUMPTION (sets the finite-size CI width)
+    basis_prob_z: 0.5                 # symmetric BB84
+    decoy:
+      enabled: false                  # opt-in; adds the decoy_state feature group
+      intensities: [0.5, 0.1, 0.0]    # signal, weak decoy, vacuum [Ma05]
+      probabilities: [0.7, 0.2, 0.1]  # ASSUMPTION (typical allocation; [Ma05] optimises these per distance)
+
+  channel:
+    fiber:
+      attenuation_db_per_km: 0.2      # [ITU-G652]
+      distance_km: [5.0, 80.0]        # training range; held-out test uses heldout.distance_km
+      extra_loss_db: [0.5, 3.0]       # connectors, splices, Bob's optics; ASSUMPTION
+    free_space:
+      # Log-normal fading of the received intensity, weak-turbulence regime [Andrews05, Capraro12]
+      geometric_loss_db: [6.0, 15.0]  # beam divergence over a short terrestrial link; ASSUMPTION
+      atmospheric_attenuation_db_per_km: [0.1, 0.5]   # clear air [Andrews05]
+      distance_km: [0.5, 5.0]
+      scintillation_index: [0.05, 0.40]               # sigma_I^2, weak turbulence (< 1) [Andrews05]
+      fading_ar1_phi: 0.9             # block-to-block correlation of the fading; ASSUMPTION (ms-scale coherence)
+      log_background_per_gate: [-6.0, -4.5]           # stray light, night to dawn; ASSUMPTION
+
+  detector:
+    types: [ingaas_spad, snspd]       # each session draws one type uniformly
+    ingaas_spad:
+      efficiency: [0.10, 0.25]        # gated InGaAs SPAD at 1550 nm [Hadfield09, Gobby04]
+      log_dark_per_gate: [-6.0, -5.0] # 1e-6 .. 1e-5 per gate [Hadfield09]
+      afterpulse_prob: [0.0, 0.03]    # [Hadfield09]; set enable_afterpulsing to use it
+      dead_time_s: 1.0e-8             # gated hold-off folded into an effective 10 ns; ASSUMPTION
+    snspd:
+      efficiency: [0.60, 0.93]        # [Marsili13, Hadfield09]
+      log_dark_per_gate: [-8.0, -7.0] # sub-100 cps at GHz gating [Hadfield09]
+      afterpulse_prob: [0.0, 0.0]     # SNSPDs show no afterpulsing [Hadfield09]
+      dead_time_s: 2.0e-8             # recovery time ~ tens of ns [Hadfield09]
+    enable_afterpulsing: true
+    enable_dead_time: true
+    per_basis_efficiency_mismatch: [0.0, 0.10]  # benign fractional mismatch between detectors; ASSUMPTION
+
+  optics:
+    misalignment_error: [0.01, 0.02]  # e_d, intrinsic optical error 1-2% [Ma05 uses 1.5%; Gobby04 reports ~2-3% total]
+
+  # Non-stationarity present in EVERY session, attacked or not (audit L-1). Without it a
+  # benign channel never changes, and any change detector separates attacks from noise.
+  benign_dynamics:
+    misalignment_drift_std: 0.0015    # per-block AR(1) innovation of e_d; ASSUMPTION (polarisation drift)
+    misalignment_drift_phi: 0.97
+    loss_step_prob: 0.35              # probability a session contains one loss step (bend, reseat); ASSUMPTION
+    loss_step_db: [-1.5, 3.0]         # step size; negative = loss decreases; ASSUMPTION
+    efficiency_drift_std: 0.004       # relative per-block drift of detector efficiency (temperature); ASSUMPTION
+
+  finite_size:
+    confidence: 0.95                  # Wilson score interval per block [Wilson27]
+    gap_sequence_cap: 4096            # max sifted events used for error-gap statistics (speed); ASSUMPTION
+
+  # Asymptotic intercept-resend abort level: QBER above ~11% leaves no key in the
+  # one-way BB84 proof [SP00]. Kept as a baseline only; it ignores finite-size effects.
+  asymptotic_abort_qber: 0.11
+
+  # Attack models. `intensity` is the primary strength knob sampled per session for
+  # training; `heldout_intensity` is a disjoint range used only by the generalisation
+  # test set. Every model is a simplification; see docs/ATTACK_MODELS.md.
+  attacks:
+    intercept_resend:
+      intensity: [0.05, 0.30]         # fraction of pulses intercepted [Bennett92]
+      heldout_intensity: [0.30, 0.45]
+      gain_matching: true             # Eve tunes her resent intensity so Bob's click rate is unchanged
+    pns:
+      intensity: [0.40, 1.00]         # fraction of pulses Eve's QND splitter acts on [Brassard00]
+      heldout_intensity: [0.20, 0.40]
+      gain_mismatch: [0.0, 0.15]      # relative error of Eve's yield matching; ASSUMPTION
+    detector_blinding:
+      intensity: [0.30, 1.00]         # fraction of time Bob's detectors are blinded [Lydersen10]
+      heldout_intensity: [0.10, 0.30]
+      residual_qber: [0.002, 0.015]   # Eve's trigger-pulse imperfection [Lydersen10 report <1% added error]
+      trigger_gain_mismatch: [0.0, 0.15]
+    time_shift:
+      intensity: [0.30, 0.90]         # fraction of pulses time-shifted [Qi07]
+      heldout_intensity: [0.90, 1.00]
+      efficiency_ratio: [0.10, 0.50]  # eta_low / eta_high at the shifted arrival time [Zhao08 measured ~1:4 to 1:10]
+    trojan_horse:
+      intensity: [0.01, 0.20]         # mean back-reflected photons per pulse reaching Eve [Lucamarini15]
+      heldout_intensity: [0.20, 0.40]
+      forward_leak_ratio: [1.0e-5, 1.0e-4]   # fraction of injected light that leaks to Bob as noise; ASSUMPTION
+    beam_splitting:
+      intensity: [0.10, 0.50]         # tapped fraction of each pulse [Bennett92, Huttner95]
+      heldout_intensity: [0.50, 0.70]
+      loss_compensation: true         # Eve replaces the fibre with a lower-loss link to hide the tap
+
+  heldout:
+    distance_km: [80.0, 110.0]        # fibre distances never seen in training
+
+# ---------------------------------------------------------------------------
+# Legacy 3-class BB84 pipeline (scripts 01-04). Kept for reproducibility of the
+# original results; it uses a fixed bit-flip noise model rather than the calibrated one.
+# ---------------------------------------------------------------------------
+legacy_bb84:
+  baseline_qber: 0.03                 # e_0, typical fibre QBER [Gobby04]
+  abort_qber_threshold: 0.11          # [SP00]
+  scintillation_std: 0.30             # stationary std of AR(1) log-QBER (audit: 0.008 was below block noise)
+  scintillation_ar1_phi: 0.75         # ASSUMPTION
+
+# ---------------------------------------------------------------------------
+# Twin-field and MDI models (scripts 05 and 11)
+# ---------------------------------------------------------------------------
+tf_qkd:
+  channel:
+    alpha_db_per_km: 0.2              # [ITU-G652]
+    eta_det: 0.6                      # SNSPD at the relay [Hadfield09]
+    p_dark: 1.0e-8                    # [Hadfield09]
+    phase_noise_rad: 0.35             # residual phase error after compensation (~3.3% X error); ASSUMPTION
+    phase_slices: 16                  # M phase slices for X-window matching (Wang, Yu, Hu, PRA 98, 062323, 2018)
+    f_ec: 1.1                         # error-correction inefficiency
+  bb84_misalignment: 0.015            # e_d for the decoy BB84 comparison curve [Ma05]
+
+mdi_qkd:
+  channel:
+    alpha_db_per_km: 0.2              # [ITU-G652]
+    eta_det: 0.6                      # [Hadfield09]
+    p_dark: 1.0e-7                    # [Hadfield09]
+    e_misalign: 0.015                 # [Ma05]
+    f_ec: 1.16
+
+# ---------------------------------------------------------------------------
+# Legacy multi-attack engine (bb84_engine.NUISANCE_RANGES). Used only when a script
+# runs with engine=legacy; the calibrated engine above replaces it. Values are the
+# original P2.1 ranges, chosen to overlap across classes rather than taken from hardware.
+# ---------------------------------------------------------------------------
+legacy_multiattack_nuisance:
+  base_qber: [0.005, 0.060]
+  channel_transmittance: [0.10, 0.95]
+  log10_dark_count: [-6.0, -4.3]
+  det_eff_z: [0.80, 1.00]
+  det_eff_x_ratio: [0.70, 1.00]
+  ir_p_eve: [0.05, 0.30]
+  pns_mu: [0.20, 0.45]
+  pns_single_pass: [0.20, 0.60]
+  blinding_eff: [0.70, 0.98]
+  blinding_residual_qber: [0.002, 0.020]
+  ts_shift_prob: [0.30, 0.85]
+  ts_eff_x_ratio: [0.30, 0.90]
+  ts_x_misalign: [0.04, 0.16]

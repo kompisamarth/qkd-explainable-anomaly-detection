@@ -31,21 +31,13 @@ from src.simulator.eve_attacks import EveAttacker
 #   - IR interception reaches down to 5%, where the induced error is comparable
 #     to benign baseline drift
 # ----------------------------------------------------------------------------
-NUISANCE_RANGES = {
-    "base_qber": (0.005, 0.060),            # e_0: short well-aligned link .. noisy long link
-    "channel_transmittance": (0.10, 0.95),  # distance / coupling loss
-    "log10_dark_count": (-6.0, -4.3),       # 1e-6 .. ~5e-5 per pulse
-    "det_eff_z": (0.80, 1.00),              # Bob's Z-basis detector efficiency
-    "det_eff_x_ratio": (0.70, 1.00),        # intrinsic (benign) basis mismatch
-    "ir_p_eve": (0.05, 0.30),               # fractional interception
-    "pns_mu": (0.20, 0.45),                 # WCP mean photon number
-    "pns_single_pass": (0.20, 0.60),        # fraction of single-photon pulses Eve forwards
-    "blinding_eff": (0.70, 0.98),           # how reliably Eve's faked states trigger clicks
-    "blinding_residual_qber": (0.002, 0.020),  # Eve's state-preparation imperfection
-    "ts_shift_prob": (0.30, 0.85),          # fraction of pulses time-shifted
-    "ts_eff_x_ratio": (0.30, 0.90),         # attack-induced basis mismatch
-    "ts_x_misalign": (0.04, 0.16),          # gate-edge misalignment error
-}
+def _load_nuisance_ranges():
+    """Ranges live in config/physics.yaml (legacy_multiattack_nuisance)."""
+    from src.config import load_physics
+    return {k: tuple(v) for k, v in load_physics()["legacy_multiattack_nuisance"].items()}
+
+
+NUISANCE_RANGES = _load_nuisance_ranges()
 
 
 @dataclass
@@ -113,6 +105,9 @@ class BB84Simulator:
         self.raw_photons = int(raw_photons_per_block)
         self.base_qber = float(base_qber)
         self.rng = np.random.default_rng(random_state)
+        # Optional source for Alice's bits and bases (anything with .integers(0, 2, size, dtype)),
+        # e.g. qpiai_extras.QRNGSource. None keeps the seeded NumPy generator.
+        self.alice_source = None
 
     def simulate_block_vectorized(
         self,
@@ -131,8 +126,9 @@ class BB84Simulator:
         randomized per-session values when `randomize_nuisance=True`.
         """
         # Step 1: Alice samples bits and bases
-        alice_bits = self.rng.integers(0, 2, size=self.raw_photons, dtype=np.int8)
-        alice_bases = self.rng.integers(0, 2, size=self.raw_photons, dtype=np.int8)
+        src = self.alice_source if self.alice_source is not None else self.rng
+        alice_bits = src.integers(0, 2, size=self.raw_photons, dtype=np.int8)
+        alice_bases = src.integers(0, 2, size=self.raw_photons, dtype=np.int8)
 
         # Step 2: Bob basis selection
         bob_bases = self.rng.integers(0, 2, size=self.raw_photons, dtype=np.int8)

@@ -584,7 +584,15 @@ class CausalMultiAttackFeatureExtractor:
         qber_loss_interaction = qber_mean / (transmission_efficiency + 1e-6)
         qber_loss_product = qber_mean * (1.0 - transmission_efficiency)
         loss_anomaly_index = transmission_efficiency - 0.50
-        dark_count_ratio = 1e-5 / (qber_mean + 1e-6)
+        exp_dark = getattr(seq, "block_expected_dark_ratio", None)
+        if exp_dark is not None:
+            # Expected dark-count clicks (from the detector's specified dark rate, which
+            # Bob knows) as a fraction of observed clicks. Audit B-5: the old formula
+            # used a constant 1e-5 and so was just 1/QBER.
+            dark_count_ratio = np.lib.stride_tricks.sliding_window_view(
+                np.asarray(exp_dark, dtype=np.float64), w).mean(axis=1)
+        else:
+            dark_count_ratio = 1e-5 / (qber_mean + 1e-6)
 
         # Multi-scale sub-windows: W=10, 25, 50
         multiscale_mean_w10 = win_q[:, -10:].mean(axis=1)
@@ -608,10 +616,17 @@ class CausalMultiAttackFeatureExtractor:
         error_clustering_coefficient = win_clust.mean(axis=1)
         loss_gradient = (win_eff @ x_centered) / x_dot
 
-        # Efficiency entropy
-        eff_edges = np.linspace(0.0, 1.0, 6)
-        eff_bin = np.searchsorted(eff_edges, win_eff, side="right") - 1
-        eff_bin[win_eff == eff_edges[-1]] = 4
+        # Efficiency entropy over 5 bins. Legacy sessions keep the original absolute
+        # [0, 1] bins; calibrated sessions bin relative to the window mean, because
+        # realistic click probabilities (1e-4 .. 0.3) all fall in the first absolute bin.
+        if exp_dark is not None:
+            rel_eff = win_eff / (win_eff.mean(axis=1, keepdims=True) + 1e-12)
+            eff_edges = np.linspace(0.5, 1.5, 6)
+            eff_bin = np.clip(np.searchsorted(eff_edges, rel_eff, side="right") - 1, 0, 4)
+        else:
+            eff_edges = np.linspace(0.0, 1.0, 6)
+            eff_bin = np.searchsorted(eff_edges, win_eff, side="right") - 1
+            eff_bin[win_eff == eff_edges[-1]] = 4
         eff_counts = np.stack([np.sum(eff_bin == k, axis=1) for k in range(5)], axis=1)
         with np.errstate(divide="ignore", invalid="ignore"):
             eff_p = eff_counts / eff_counts.sum(axis=1, keepdims=True)
@@ -660,4 +675,51 @@ class CausalMultiAttackFeatureExtractor:
         for fname, farr in zip(self.feature_names, feature_arrays):
             df[fname] = np.asarray(farr, dtype=np.float64)
 
+        # Decoy-state group (only when the session carried signal/decoy/vacuum intensities)
+        gains = getattr(seq, "block_intensity_gains", None)
+        if gains is not None and np.asarray(gains).shape[1] == 3:
+            for fname, farr in decoy_features(seq, w).items():
+                df[fname] = farr
+
+        # Non-feature metadata from the calibrated engine: finite-size CI and ground truth
+        # that a real receiver would not see (never used as model inputs).
+        for col, attr in (("qber_ci_low", "block_qber_ci_low"), ("qber_ci_high", "block_qber_ci_high"),
+                          ("eve_info_fraction", "block_eve_info"), ("true_transmittance", "block_transmittance")):
+            arr = getattr(seq, attr, None)
+            if arr is not None:
+                df[col] = np.asarray(arr, dtype=np.float64)[end_idx]
+        if getattr(seq, "block_qber_ci_low", None) is not None:
+            df["sifted_bits_block"] = np.asarray(seq.block_sifted_lens, dtype=np.float64)[end_idx]
+            df["qber_block"] = qbers[end_idx]
         return df
+
+
+FEATURE_NAMES_DECOY = ["decoy_gain_ratio", "vacuum_gain_ratio", "decoy_qber_gap", "y1_lower_bound_ratio"]
+FEATURE_CONTEXT_DECOY = {
+    "decoy_gain_ratio": "Decoy versus signal click ratio",
+    "vacuum_gain_ratio": "Vacuum clicks versus signal clicks",
+    "decoy_qber_gap": "Decoy minus signal error rate",
+    "y1_lower_bound_ratio": "Single-photon share of signal clicks",
+}
+
+
+def decoy_features(seq, w: int) -> dict:
+    """Window-mean decoy statistics (Ma, Qi, Zhao & Lo, PRA 72, 012326, 2005).
+
+    y1_lower_bound_ratio is the vacuum + weak-decoy lower bound on the single-photon
+    yield, expressed as the fraction of the signal gain it accounts for. PNS lowers it,
+    because Eve's forwarding favours multi-photon pulses.
+    """
+    mu, nu, _ = [float(x) for x in seq.intensities]
+    g = np.lib.stride_tricks.sliding_window_view(np.asarray(seq.block_intensity_gains, dtype=np.float64), w, axis=0)
+    e = np.lib.stride_tricks.sliding_window_view(np.asarray(seq.block_intensity_qbers, dtype=np.float64), w, axis=0)
+    q_mu, q_nu, q_0 = g[:, 0].mean(axis=1), g[:, 1].mean(axis=1), g[:, 2].mean(axis=1)
+    e_mu, e_nu = e[:, 0].mean(axis=1), e[:, 1].mean(axis=1)
+    y1_l = (mu / (mu * nu - nu * nu)) * (
+        q_nu * np.exp(nu) - q_mu * np.exp(mu) * nu * nu / (mu * mu) - (mu * mu - nu * nu) / (mu * mu) * q_0)
+    return {
+        "decoy_gain_ratio": q_nu / (q_mu + 1e-15),
+        "vacuum_gain_ratio": q_0 / (q_mu + 1e-15),
+        "decoy_qber_gap": e_nu - e_mu,
+        "y1_lower_bound_ratio": np.clip(y1_l, 0.0, None) * mu * np.exp(-mu) / (q_mu + 1e-15),
+    }
