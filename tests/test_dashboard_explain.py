@@ -46,7 +46,9 @@ def test_explain_returns_all_63_attribution_vectors(client):
 def test_threshold_verdicts_are_consistent(client):
     s, d = _explain(client, 3)
     checks = {t["name"]: t for t in d["thresholds"]}
-    assert len(checks) == 5
+    # 11% (mixed, Z, X), Hoeffding, finite-size Wilson (calibrated sessions carry a CI), XGBoost
+    assert len(checks) == 6
+    assert "Finite-size 11% (Wilson)" in checks
     for t in d["thresholds"]:
         assert abs(t["margin"] - (t["value"] - t["threshold"])) < 1e-12
         if t["unit"] == "pct":

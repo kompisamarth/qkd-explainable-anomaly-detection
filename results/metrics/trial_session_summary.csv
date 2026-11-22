@@ -1,6 +1,8 @@
-class_id,class_name,p_eve,blocks,post_onset_accuracy,detection_latency_blocks,file
-0,Normal,0.0,101,1.0,-1,trial_class0.csv
-1,Fractional IR,0.07513098958717561,101,0.32,10,trial_class1.csv
-2,PNS Attack,0.20914829937505092,101,0.9733333333333334,0,trial_class2.csv
-3,Fake State,1.0,101,0.72,0,trial_class3.csv
-4,Time-Shift,0.6876640061128378,101,0.9866666666666667,1,trial_class4.csv
+class_id,class_name,p_eve,seed,distance_km,detector,blocks,post_onset_accuracy,detection_latency_blocks,file,data_label
+0,Normal Channel,0.0,2000,48.13522391432272,ingaas_spad,101,0.96,29,trial_class0.csv,Simulated data
+1,Fractional Intercept-Resend,0.09069126636684956,2001,36.77523518715182,ingaas_spad,101,1.0,0,trial_class1.csv,Simulated data
+2,Photon Number Splitting,0.6454098899728941,2002,71.65695180147634,snspd,101,0.24,3,trial_class2.csv,Simulated data
+3,Detector Blinding (Fake State),0.435294688805824,2003,27.097231217137406,snspd,101,0.5866666666666667,0,trial_class3.csv,Simulated data
+4,Time-Shift,0.5263389315478768,2004,53.015226238237254,snspd,101,0.6266666666666667,0,trial_class4.csv,Simulated data
+5,Trojan Horse (simplified),0.12329663853472529,2005,58.83102516604608,snspd,101,0.0,24,trial_class5.csv,Simulated data
+6,Beam Splitting,0.4612331021630849,2006,70.398227437736,ingaas_spad,101,0.02666666666666667,21,trial_class6.csv,Simulated data

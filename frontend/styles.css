@@ -1153,3 +1153,16 @@ h2.sec::after {
 @media (max-width: 720px) {
   .fx-grp, .fx-table th:nth-child(3) { display: none; }
 }
+
+/* ---------- provenance captions (every chart names its source and seed) ---------- */
+.prov { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-top: 8px;
+  font-size: .72rem; color: var(--text-muted); }
+.prov:empty { display: none; }
+.prov code { font-family: var(--font-mono); font-size: .7rem; color: var(--text-secondary); }
+.prov-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-weight: 700; letter-spacing: .02em; text-transform: uppercase; font-size: .64rem; border: 1px solid; }
+.prov-badge.sim      { color: var(--info-text);    background: var(--info-soft);    border-color: var(--info-border); }
+.prov-badge.real     { color: #9d174d;             background: #fdf2f8;             border-color: #fbcfe8; }
+.prov-badge.analytic { color: var(--amber-text);   background: var(--amber-soft);   border-color: var(--amber-border); }
+.real-panel { border-color: #fbcfe8; }
+.g3 > .prov, .g4 > .prov { grid-column: 1 / -1; }

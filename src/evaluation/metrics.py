@@ -44,7 +44,11 @@ def mean_ci(values: Sequence[float], confidence: float = 0.95) -> Dict[str, floa
     m = float(v.mean())
     s = float(v.std(ddof=1)) if n > 1 else 0.0
     half = float(stats.t.ppf(0.5 + confidence / 2, n - 1) * s / np.sqrt(n)) if n > 1 else 0.0
-    return {"mean": m, "std": s, "ci95_low": m - half, "ci95_high": m + half, "n_seeds": n}
+    lo, hi = m - half, m + half
+    if np.all((v >= 0) & (v <= 1)):
+        # Rates and scores live in [0, 1]; a symmetric t-interval can overshoot with few seeds
+        lo, hi = max(lo, 0.0), min(hi, 1.0)
+    return {"mean": m, "std": s, "ci95_low": lo, "ci95_high": hi, "n_seeds": n}
 
 
 def expected_calibration_error(y_true: np.ndarray, prob: np.ndarray, n_bins: int = 15) -> float:

@@ -1,14 +1,22 @@
 """FastAPI backend for the QKD Security Operations Center dashboard.
 
-Replaces the previous Streamlit app. Serves a static animated frontend from
-`frontend/` and exposes the simulator, the trained 5-class model, SHAP
-attribution and the MDI-QKD protocol comparison as JSON.
+Serves the static frontend in `frontend/` and exposes, as JSON:
+  * the calibrated BB84 simulator (7 classes, config/physics.yaml) with the trained
+    XGBoost model's per-block predictions,
+  * SHAP attribution and per-detector threshold verdicts for any block,
+  * benchmark, channel-generalisation, MDI-QKD and dataset/leakage results.
+
+Every response that carries results includes a `provenance` block: the source file(s),
+the seed(s) and whether the data is simulated or real. Nothing here invents numbers;
+missing result files are reported as missing.
 
 Run:  python run_dashboard.py       (or: uvicorn backend.server:app --reload)
 """
 
 from __future__ import annotations
 
+import copy
+import json
 import sys
 import uuid
 from collections import OrderedDict
@@ -26,104 +34,112 @@ from pydantic import BaseModel, Field
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
+from src.config import load_physics  # noqa: E402
 from src.features.time_series import (  # noqa: E402
     FEATURE_CONTEXT_63,
     FEATURE_GROUPS_63,
     FEATURE_NAMES_63,
     CausalMultiAttackFeatureExtractor,
 )
-from src.simulator.bb84_engine import NUISANCE_RANGES, BB84Simulator  # noqa: E402
+from src.simulator.calibrated import CLASS_KEYS, CLASS_NAMES, CalibratedBB84Simulator  # noqa: E402
 
 FRONTEND = ROOT_DIR / "frontend"
 METRICS = ROOT_DIR / "results" / "metrics"
-TRIALS = ROOT_DIR / "data" / "processed" / "trial_sessions"
-CKPT = ROOT_DIR / "data" / "processed" / "checkpoints" / "xgb_multiattack.joblib"
+PROCESSED = ROOT_DIR / "data" / "processed"
+TRIALS = PROCESSED / "trial_sessions"
+CKPT = PROCESSED / "checkpoints" / "xgb_multiattack.joblib"
+PHYS = load_physics()["calibrated_bb84"]
 
-CLASS_NAMES = ["Normal Channel", "Fractional IR", "PNS Attack", "Fake State", "Time-Shift"]
+SIM_LABEL = "Simulated data"
+REAL_LABEL = "Real data (benign, Zenodo 21792844)"
+SEEDS_MULTI = "seeds 42-46"
+
+CLASS_SHORT = ["Normal", "Intercept-Resend", "PNS", "Blinding", "Time-Shift", "Trojan Horse", "Beam Splitting"]
 CLASS_FULL = [
-    "Normal Channel (no eavesdropper)",
-    "Fractional Intercept-Resend",
-    "Photon Number Splitting (PNS)",
-    "Fake State (detector blinding)",
-    "Time-Shift Attack",
+    "Normal channel (no eavesdropper)",
+    "Fractional intercept-resend",
+    "Photon number splitting (PNS)",
+    "Detector blinding (fake states)",
+    "Time-shift (detector efficiency mismatch)",
+    "Trojan horse (simplified)",
+    "Beam splitting",
 ]
-CLASS_COLORS = ["#0d9488", "#dc2626", "#0284c7", "#7c3aed", "#d97706"]
+CLASS_COLORS = ["#0d9488", "#dc2626", "#0284c7", "#7c3aed", "#d97706", "#be185d", "#4d7c0f"]
 
 CLASS_PHYSICS = [
-    {
-        "what": "No eavesdropper. Errors come from fiber depolarization, detector dark counts "
-                "and residual polarization misalignment.",
-        "watch": "QBER sits at its baseline and the two bases agree (Q_Z is close to Q_X).",
-        "hard": "Nothing - but the baseline itself varies from 0.5% to 6% between sessions, "
-                "which is exactly what makes weak attacks hard to call.",
-    },
-    {
-        "what": "Eve intercepts a fraction of pulses, measures in a random basis and re-sends "
-                "what she saw. Each interception has a 1/4 chance of flipping the sifted bit, "
-                "so QBER rises by about r_e / 4.",
-        "watch": "QBER creeps up but stays under 11%. The giveaway is temporal: jump energy "
-                "and variance rise at onset.",
-        "hard": "At r_e = 0.05-0.10 the induced error is comparable to normal baseline drift, "
-                "so a single block tells you nothing.",
-    },
-    {
-        "what": "Eve splits multi-photon pulses, keeps one photon and forwards the rest "
-                "untouched. She never measures the forwarded photon.",
-        "watch": "QBER does NOT rise. The yield changes: transmission efficiency and key rate "
-                "drop out of proportion to distance.",
-        "hard": "A QBER monitor is completely blind. You need the loss/error relationship, "
-                "not the error alone.",
-    },
-    {
-        "what": "Eve shines bright light to force Bob's detectors out of Geiger mode into "
-                "classical linear mode, then injects faked states that make them click exactly "
-                "when she wants.",
-        "watch": "QBER goes near zero and error gaps become unnaturally regular.",
-        "hard": "The worst case. Demonstrated experimentally to recover the ENTIRE key without "
-                "raising QBER. Eve controls the monitor itself - see the MDI-QKD view.",
-    },
-    {
-        "what": "Eve shifts pulse arrival times so they land where Bob's two detectors have "
-                "different efficiencies, biasing which basis gets recorded.",
-        "watch": "Strong basis asymmetry: |Q_Z - Q_X| grows while the average QBER stays normal.",
-        "hard": "The session-average QBER looks fine. You only see it by comparing the two "
-                "bases against each other.",
-    },
+    {"what": "No eavesdropper. Errors come from optical misalignment (1-2%), detector dark counts "
+             "and their afterpulses; loss comes from fibre (0.2 dB/km) and connectors.",
+     "watch": "QBER sits at its baseline. The baseline still drifts, and about a third of sessions "
+              "contain a benign loss step, so 'something changed' is not an attack by itself.",
+     "hard": "Benign QBER rises with distance as dark counts take over, which is exactly where weak "
+             "attacks hide."},
+    {"what": "Eve intercepts a fraction of pulses, measures in a random basis and resends what she saw, "
+             "tuning her resend intensity so Bob's click rate does not change.",
+     "watch": "QBER rises by about a quarter of the intercepted fraction. This is the one attack that "
+              "QBER statistics catch reliably.",
+     "hard": "At a 5% interception rate the added error (~1.2 points) is comparable to benign drift."},
+    {"what": "Eve counts photons without disturbing them, keeps one photon from every multi-photon pulse "
+             "and forwards the rest losslessly, tuning forwarding so Bob's click rate matches the honest one.",
+     "watch": "Nothing in single-intensity telemetry: no QBER rise and a matched click rate. Only decoy "
+              "states (comparing yields at several intensities) expose it.",
+     "hard": "Without decoy states this attack is undetectable by construction; low recall here is the "
+             "physically correct result."},
+    {"what": "Bright light keeps Bob's detectors in linear mode; Eve's trigger pulses make them click only "
+             "when Bob's basis equals hers, reproducing her measured bit.",
+     "watch": "QBER falls below the optical floor and the dark-count floor disappears.",
+     "hard": "A threshold on QBER can never fire, because the attack makes the channel look cleaner. "
+             "See the MDI-QKD tab for the structural fix."},
+    {"what": "Eve shifts pulse arrival times so one detector of each pair is less efficient, learning "
+             "which bit is more likely without measuring the photon.",
+     "watch": "A drop in click rate on the shifted pulses; QBER barely changes.",
+     "hard": "Benign loss steps produce the same click-rate drop."},
+    {"what": "Eve injects light into Alice's modulator and reads its back-reflection. In this simplified "
+             "model Bob only sees a tiny leak of Eve's light as extra noise.",
+     "watch": "Essentially nothing at Bob. The real signature is at Alice's watchdog photodiode, which is "
+              "not part of Bob's telemetry.",
+     "hard": "Invisible to QBER-based monitoring by design."},
+    {"what": "Eve taps a fraction of every pulse and replaces the fibre with a lower-loss link so Bob's "
+             "received intensity is unchanged.",
+     "watch": "Nothing, while the tap can be compensated.",
+     "hard": "Undetectable from Bob's statistics; privacy amplification, not monitoring, defends against it."},
 ]
 
 SCENARIOS = [
     {"id": "baseline", "cls": 0, "channel": "fiber", "onset": 76, "blocks": 150,
      "title": "Clean baseline", "tag": "No attacker",
      "headline": "Establish what normal looks like before judging anything else.",
-     "look": "QBER flat at its randomly drawn baseline; Q_Z and Q_X track together; the "
-             "classifier should stay on Normal."},
+     "look": "QBER at its drawn baseline with drift; Q_Z and Q_X track together."},
     {"id": "stealth", "cls": 1, "channel": "fiber", "onset": 76, "blocks": 150,
-     "title": "Sub-threshold stealth", "tag": "Real leakage, no alarm",
-     "headline": "The attack this whole project exists for.",
-     "look": "QBER rises at onset but stays under the 11% line, so the classical threshold "
-             "never fires. The temporal model should still catch it."},
+     "title": "Sub-threshold intercept-resend", "tag": "Real leakage, no 11% alarm",
+     "headline": "QBER rises at onset but stays under the 11% line.",
+     "look": "The classical threshold never fires; the temporal model usually catches the step."},
     {"id": "pns", "cls": 2, "channel": "fiber", "onset": 76, "blocks": 150,
-     "title": "Zero-QBER splitting", "tag": "QBER is the wrong instrument",
-     "headline": "Proof that watching the error rate alone cannot work.",
-     "look": "The QBER trace barely moves. Watch transmission efficiency instead - the yield "
-             "collapses while the error rate says everything is fine."},
+     "title": "Gain-matched PNS", "tag": "Invisible without decoys",
+     "headline": "Neither QBER nor click rate moves.",
+     "look": "Expect the model to miss this; that is the honest result without decoy states."},
     {"id": "blinding", "cls": 3, "channel": "fiber", "onset": 76, "blocks": 150,
      "title": "Detector blinding", "tag": "The alarm is inverted",
      "headline": "QBER goes DOWN during the attack.",
-     "look": "QBER drops toward zero because Eve's classical pulses are noise-free. No "
-             "threshold can catch something that makes the channel look cleaner than normal."},
+     "look": "QBER drops below the misalignment floor; no threshold can catch a cleaner-looking channel."},
     {"id": "timeshift", "cls": 4, "channel": "fiber", "onset": 76, "blocks": 150,
-     "title": "Time-shift asymmetry", "tag": "The two bases disagree",
-     "headline": "Average QBER is normal; the asymmetry between bases is not.",
-     "look": "Q_Z and Q_X separate visibly after onset while the mean sits in the normal band."},
+     "title": "Time-shift", "tag": "Click rate drops",
+     "headline": "A loss-like signature that benign loss steps can mimic.",
+     "look": "Watch the click-rate trace rather than QBER."},
+    {"id": "trojan", "cls": 5, "channel": "fiber", "onset": 76, "blocks": 150,
+     "title": "Trojan horse (simplified)", "tag": "Seen at Alice, not Bob",
+     "headline": "Bob's telemetry stays clean.",
+     "look": "Only a tiny noise rise reaches Bob; a watchdog at Alice is the real defence."},
+    {"id": "beamsplit", "cls": 6, "channel": "fiber", "onset": 76, "blocks": 150,
+     "title": "Beam splitting", "tag": "Undetectable when compensated",
+     "headline": "Eve taps light and hides the loss.",
+     "look": "Nothing to see; privacy amplification handles this one."},
     {"id": "freespace", "cls": 1, "channel": "free_space", "onset": 76, "blocks": 150,
      "title": "Turbulent free-space link", "tag": "Where false positives come from",
-     "headline": "Atmospheric turbulence mimics an attack.",
-     "look": "The baseline itself wanders. This is the regime where a fiber-trained model's "
-             "false-positive rate climbs."},
+     "headline": "Log-normal fading moves the click rate block to block.",
+     "look": "The baseline itself wanders; this is where a fibre-trained model's false-alarm rate climbs."},
 ]
 
-app = FastAPI(title="QKD Security Operations Center", version="2.0")
+app = FastAPI(title="QKD Security Operations Center", version="3.0")
 
 _model = joblib.load(CKPT) if CKPT.exists() else None
 _extractor = CausalMultiAttackFeatureExtractor(window_size=50, ema_span=10)
@@ -146,6 +162,18 @@ def _csv(name: str) -> Optional[List[Dict[str, Any]]]:
     return pd.read_csv(p).replace({np.nan: None}).to_dict(orient="records")
 
 
+def _json(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _prov(files, seeds: str, label: str = SIM_LABEL) -> Dict[str, Any]:
+    files = [files] if isinstance(files, str) else list(files)
+    return {"label": label, "files": files, "seeds": seeds,
+            "missing": [f for f in files if not (ROOT_DIR / f).exists()]}
+
+
 MODEL_HELP = (
     "The XGBoost checkpoint data/processed/checkpoints/xgb_multiattack.joblib is "
     "missing. It is produced by the pipeline, not stored in git (*.joblib is "
@@ -154,43 +182,46 @@ MODEL_HELP = (
 )
 
 
-def _package(df: pd.DataFrame, cls: int, p_eve: float, onset: int) -> Dict[str, Any]:
+def _package(df: pd.DataFrame, cls: int, p_eve: float, onset: int, extra: Optional[Dict] = None) -> Dict[str, Any]:
     """Turn a feature frame plus model predictions into the wire format."""
     if _model is None and "pred_class" not in df.columns:
-        # Without a model there are no predictions to package. Say so clearly:
-        # previously this fell through and raised KeyError('pred_class') as an
-        # opaque 500, which looked like dead buttons in the UI.
         raise HTTPException(503, MODEL_HELP)
-
+    n_cls = len(CLASS_NAMES)
     if _model is not None and "pred_class" not in df.columns:
         probs = _model.predict_proba(df[FEATURE_NAMES_63].values)
         df = df.copy()
         df["pred_class"] = probs.argmax(axis=1)
-        for k in range(5):
+        for k in range(probs.shape[1]):
             df[f"prob_class_{k}"] = probs[:, k]
+    n_prob = sum(1 for c in df.columns if c.startswith("prob_class_"))
 
     post = df[df["block_index"] >= onset]
     alarms = post.loc[post["pred_class"] != 0, "block_index"]
     delta_t = int(alarms.min() - onset) if len(alarms) else None
     post_acc = float((post["pred_class"] == cls).mean()) if len(post) else None
     fp_rate = float((df["pred_class"] != 0).mean()) if cls == 0 else None
+    has_ci = "qber_ci_low" in df.columns
 
     sid = _remember(df)
-    return {
+    out = {
         "session_id": sid,
         "class_id": cls,
-        "class_name": CLASS_NAMES[cls],
+        "class_name": CLASS_SHORT[cls],
         "class_full": CLASS_FULL[cls],
         "p_eve": round(float(p_eve), 4),
         "onset": onset,
         "blocks": df["block_index"].astype(int).tolist(),
         "qber": df["qber_mean"].round(6).tolist(),
+        "qber_block": (df["qber_block"].round(6).tolist() if "qber_block" in df else None),
+        "ci_low": (df["qber_ci_low"].round(6).tolist() if has_ci else None),
+        "ci_high": (df["qber_ci_high"].round(6).tolist() if has_ci else None),
+        "sifted_bits": (df["sifted_bits_block"].astype(int).tolist() if "sifted_bits_block" in df else None),
         "qber_z": df["qber_rectilinear"].round(6).tolist(),
         "qber_x": df["qber_diagonal"].round(6).tolist(),
-        "efficiency": df["transmission_efficiency"].round(6).tolist(),
+        "efficiency": df["transmission_efficiency"].round(8).tolist(),
         "asymmetry": df["basis_asymmetry"].round(6).tolist(),
         "pred": df["pred_class"].astype(int).tolist(),
-        "probs": [[round(float(df[f"prob_class_{k}"].iloc[i]), 5) for k in range(5)]
+        "probs": [[round(float(df[f"prob_class_{k}"].iloc[i]), 5) for k in range(n_prob)]
                   for i in range(len(df))],
         "summary": {
             "mean_qber_post": float(post["qber_mean"].mean()),
@@ -202,7 +233,38 @@ def _package(df: pd.DataFrame, cls: int, p_eve: float, onset: int) -> Dict[str, 
             "post_accuracy": post_acc,
             "false_positive_rate": fp_rate,
         },
+        "provenance": {"label": SIM_LABEL, "engine": "calibrated (config/physics.yaml)",
+                       "model": "data/processed/checkpoints/xgb_multiattack.joblib"},
     }
+    if extra:
+        out["provenance"].update(extra)
+    return out
+
+
+def _simulate(cls: int, channel: str, blocks: int, onset: int, seed: int, physics: Optional[Dict] = None,
+              distance_km: Optional[float] = None, intensity: Optional[float] = None,
+              detector: Optional[str] = None):
+    phys = physics or PHYS
+    if detector and detector != "auto":
+        phys = copy.deepcopy(phys)
+        phys["detector"]["types"] = [detector]
+    sim = CalibratedBB84Simulator(phys, random_state=seed)
+    rng = np.random.default_rng(seed)
+    sp = sim.draw_session_physics(rng, CLASS_KEYS[cls], channel, blocks=blocks)
+    if distance_km is not None and channel == "fiber":
+        # Keep the session's drawn connector/optics loss; replace only the fibre part.
+        # (Free-space loss is dominated by geometry, so distance is not overridden there.)
+        alpha = phys["channel"]["fiber"]["attenuation_db_per_km"]
+        sp.loss_db = alpha * float(distance_km) + (sp.loss_db - alpha * sp.distance_km)
+        sp.distance_km = float(distance_km)
+    if intensity is not None and cls != 0:
+        sp.intensity = float(intensity)
+    seq = sim.simulate_session(1, cls, channel_type=channel, blocks_per_session=blocks,
+                               attack_start_block=onset, session_seed=seed, physics=sp)
+    df = _extractor.extract_from_session(seq)
+    if df.empty:
+        raise HTTPException(400, "session too short for the W=50 window")
+    return df, sp
 
 
 # --------------------------------------------------------------------------
@@ -214,37 +276,50 @@ def meta():
     headline = {}
     if ms:
         lookup = {r[list(r.keys())[0]]: r for r in ms}
-        for k in ("accuracy", "macro_f1", "xgb_binary_fnr", "fixed11_binary_fnr",
+        for k in ("accuracy", "macro_f1", "xgb_binary_fnr", "xgb_binary_fpr", "fixed11_binary_fnr",
                   "max_single_feature_auc"):
             if k in lookup:
-                headline[k] = {"mean": lookup[k]["mean"], "std": lookup[k]["std"]}
+                headline[k] = {c: lookup[k].get(c) for c in ("mean", "std", "ci95_low", "ci95_high", "n_seeds")}
+    att = PHYS["attacks"]
     return {
-        "class_names": CLASS_NAMES,
+        "class_names": CLASS_SHORT,
         "class_full": CLASS_FULL,
         "class_colors": CLASS_COLORS,
         "class_physics": CLASS_PHYSICS,
         "scenarios": SCENARIOS,
         "feature_groups": {k: v for k, v in FEATURE_GROUPS_63.items()},
-        "nuisance_ranges": {k: list(v) for k, v in NUISANCE_RANGES.items()},
+        "controls": {
+            "fiber_distance_km": PHYS["channel"]["fiber"]["distance_km"],
+            "heldout_distance_km": PHYS["heldout"]["distance_km"],
+            "detector_types": PHYS["detector"]["types"],
+            "attack_intensity": {CLASS_KEYS.index(a): att[a]["intensity"] for a in att},
+            "attack_heldout_intensity": {CLASS_KEYS.index(a): att[a]["heldout_intensity"] for a in att},
+            "abort_qber": PHYS["asymptotic_abort_qber"],
+        },
         "headline": headline,
+        "headline_provenance": _prov("results/metrics/multiattack_multiseed_summary.csv", SEEDS_MULTI),
         "model_loaded": _model is not None,
+        "n_classes": len(CLASS_NAMES),
     }
 
 
 @app.get("/api/trial/{cls}")
 def trial(cls: int):
-    if not 0 <= cls <= 4:
-        raise HTTPException(400, "class must be 0-4")
+    if not 0 <= cls < len(CLASS_NAMES):
+        raise HTTPException(400, f"class must be 0-{len(CLASS_NAMES) - 1}")
     p = TRIALS / f"trial_class{cls}.csv"
     if not p.exists():
         raise HTTPException(404, "trial data missing - run scripts/11_mdi_protocol_comparison.py")
     df = pd.read_csv(p)
-    return _package(df, cls, float(df["session_p_eve"].iloc[0]),
-                    int(df["attack_start_block"].iloc[0]))
+    if _model is not None and int(getattr(_model, "n_classes_", len(CLASS_NAMES))) != \
+            sum(1 for c in df.columns if c.startswith("prob_class_")):
+        df = df.drop(columns=[c for c in df.columns if c.startswith("prob_class_")] + ["pred_class"], errors="ignore")
+    return _package(df, cls, float(df["session_p_eve"].iloc[0]), int(df["attack_start_block"].iloc[0]),
+                    {"file": f"data/processed/trial_sessions/trial_class{cls}.csv"})
 
 
 class SimReq(BaseModel):
-    cls: int = Field(default=0, ge=0, le=4)
+    cls: int = Field(default=0, ge=0, le=6)
     channel: str = "fiber"
     blocks: int = Field(default=150, ge=100, le=250)
     onset: int = Field(default=76, ge=55, le=200)
@@ -257,56 +332,68 @@ class BlindSimReq(BaseModel):
     seed: int = Field(default=42, ge=0, le=10**9)
 
 
+class CustomSimReq(BaseModel):
+    protocol: str = "bb84"                   # "bb84" or "decoy_bb84"
+    channel: str = "fiber"
+    distance_km: float = Field(default=30.0, ge=0.5, le=150.0)
+    cls: int = Field(default=1, ge=0, le=6)
+    intensity: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    detector: str = "auto"                   # "auto", "ingaas_spad", "snspd"
+    blocks: int = Field(default=150, ge=100, le=250)
+    onset: int = Field(default=76, ge=55, le=200)
+    seed: int = Field(default=42, ge=0, le=10**9)
+
+
+def _check_channel(ch):
+    if ch not in ("fiber", "free_space"):
+        raise HTTPException(400, "channel must be fiber or free_space")
+
+
 @app.post("/api/simulate/blind")
 def simulate_blind(req: BlindSimReq):
-    import numpy as np
-    if req.channel not in ("fiber", "free_space"):
-        raise HTTPException(400, "channel must be fiber or free_space")
+    _check_channel(req.channel)
     rng = np.random.default_rng(req.seed + 7919)
-    # Realistic prior: 25% Normal, 20% IR, 20% PNS, 20% Fake State, 15% Time-Shift
-    cls = int(rng.choice([0, 1, 2, 3, 4], p=[0.25, 0.20, 0.20, 0.20, 0.15]))
+    n = len(CLASS_NAMES)
+    probs = np.array([0.25] + [0.75 / (n - 1)] * (n - 1))
+    cls = int(rng.choice(range(n), p=probs))
     onset = int(rng.integers(55, min(req.blocks - 20, 95)))
-    sim = BB84Simulator(raw_photons_per_block=1024, random_state=req.seed)
-    seq = sim.simulate_session(
-        session_id=1, target_attack_class=cls, channel_type=req.channel,
-        blocks_per_session=req.blocks, attack_start_block=onset,
-        attack_mode="multiattack", randomize_nuisance=True,
-    )
-    df = _extractor.extract_from_session(seq)
-    if df.empty:
-        raise HTTPException(400, "session too short for the W=50 window")
-    pkg = _package(df, cls, float(seq.p_eve), onset)
+    df, sp = _simulate(cls, req.channel, req.blocks, onset, req.seed)
+    pkg = _package(df, cls, sp.intensity, onset, {"seed": req.seed})
     pkg["blind"] = True
     return pkg
 
 
 @app.post("/api/simulate")
 def simulate(req: SimReq):
-    if req.channel not in ("fiber", "free_space"):
-        raise HTTPException(400, "channel must be fiber or free_space")
+    _check_channel(req.channel)
     onset = min(req.onset, req.blocks - 20)
-    sim = BB84Simulator(raw_photons_per_block=1024, random_state=req.seed)
-    seq = sim.simulate_session(
-        session_id=1, target_attack_class=req.cls, channel_type=req.channel,
-        blocks_per_session=req.blocks, attack_start_block=onset,
-        attack_mode="multiattack", randomize_nuisance=True,
-    )
-    df = _extractor.extract_from_session(seq)
-    if df.empty:
-        raise HTTPException(400, "session too short for the W=50 window")
-    return _package(df, req.cls, float(seq.p_eve), onset)
+    df, sp = _simulate(req.cls, req.channel, req.blocks, onset, req.seed)
+    return _package(df, req.cls, sp.intensity, onset, {"seed": req.seed})
 
 
-_explainer = None
-
-
-def _tree_explainer():
-    """Build the SHAP explainer once; parsing the XGBoost trees costs ~0.8 s per build."""
-    global _explainer
-    if _explainer is None:
-        import shap
-        _explainer = shap.TreeExplainer(_model)
-    return _explainer
+@app.post("/api/simulate/custom")
+def simulate_custom(req: CustomSimReq):
+    _check_channel(req.channel)
+    if req.protocol not in ("bb84", "decoy_bb84"):
+        raise HTTPException(400, "protocol must be bb84 or decoy_bb84")
+    if req.detector not in ("auto", "ingaas_spad", "snspd"):
+        raise HTTPException(400, "detector must be auto, ingaas_spad or snspd")
+    phys = copy.deepcopy(PHYS)
+    phys["source"]["decoy"]["enabled"] = req.protocol == "decoy_bb84"
+    onset = min(req.onset, req.blocks - 20)
+    df, sp = _simulate(req.cls, req.channel, req.blocks, onset, req.seed, physics=phys,
+                       distance_km=req.distance_km if req.channel == "fiber" else None,
+                       intensity=req.intensity, detector=req.detector)
+    lo, hi = PHYS["channel"]["fiber"]["distance_km"]
+    pkg = _package(df, req.cls, sp.intensity, onset, {
+        "seed": req.seed, "protocol": req.protocol,
+        "note": ("Decoy intensities are simulated, but the deployed model uses only the 63 base features."
+                 if req.protocol == "decoy_bb84" else None),
+        "out_of_training_range": bool(req.channel == "fiber" and not lo <= req.distance_km <= hi),
+    })
+    pkg["physics"] = {k: (float(v) if isinstance(v, (int, float, np.floating)) else v)
+                      for k, v in sp.summary().items()}
+    return pkg
 
 
 @app.get("/api/explain")
@@ -331,40 +418,43 @@ def explain(session_id: str, block: int):
                  "value": float(x[0, i]), "group": group_of[FEATURE_NAMES_63[i]],
                  "context": FEATURE_CONTEXT_63[FEATURE_NAMES_63[i]]}
                 for r, i in enumerate(order)]
-    top = features[:14]
-
     groups = {}
     for g, feats in FEATURE_GROUPS_63.items():
         idx = [FEATURE_NAMES_63.index(f) for f in feats]
         groups[g] = float(np.abs(vals[idx]).sum())
     tot = sum(groups.values()) or 1.0
     groups = {k: v / tot for k, v in groups.items()}
-
+    n_prob = sum(1 for c in row.columns if c.startswith("prob_class_"))
     return {
-        "block": block,
-        "pred": pred,
-        "pred_name": CLASS_NAMES[pred],
-        "probs": [float(row[f"prob_class_{k}"].iloc[0]) for k in range(5)],
-        "top_features": top,
-        "features": features,
-        "groups": groups,
+        "block": block, "pred": pred, "pred_name": CLASS_SHORT[pred],
+        "probs": [float(row[f"prob_class_{k}"].iloc[0]) for k in range(n_prob)],
+        "top_features": features[:14], "features": features, "groups": groups,
         "thresholds": _threshold_checks(row.iloc[0]),
+        "provenance": {"label": SIM_LABEL, "model": "data/processed/checkpoints/xgb_multiattack.joblib"},
     }
 
 
+_explainer = None
+
+
+def _tree_explainer():
+    """Build the SHAP explainer once; parsing the XGBoost trees costs ~0.8 s per build."""
+    global _explainer
+    if _explainer is None:
+        import shap
+        _explainer = shap.TreeExplainer(_model)
+    return _explainer
+
+
 HOEFFDING_ALPHA = 0.01      # config.yaml models.hoeffding.alpha (target FPR <= 1%)
-RAW_PHOTONS_PER_BLOCK = 1024
 
 
 def _threshold_checks(r: pd.Series) -> List[Dict[str, Any]]:
-    """Does this block's evidence cross each detector's alarm threshold?
-
-    `exceeded` True means that detector raises an alarm on this block; False means
-    the block sits within the threshold, so an attack here would go unflagged by it.
-    """
+    """Does this block's evidence cross each detector's alarm threshold?"""
+    abort = float(PHYS["asymptotic_abort_qber"])
     q = float(r["qber_mean"])
-    # Hoeffding test on the W=50 window: N sifted bits ~ key rate x raw photons x W
-    n_bits = max(float(r["key_generation_rate"]) * RAW_PHOTONS_PER_BLOCK * _extractor.window_size, 1.0)
+    pulses = float(PHYS["source"]["pulses_per_block"])
+    n_bits = max(float(r["key_generation_rate"]) * pulses * _extractor.window_size, 1.0)
     e0 = _extractor.base_qber
     hoeff = e0 + float(np.sqrt(np.log(1.0 / HOEFFDING_ALPHA) / (2.0 * n_bits)))
     p_attack = 1.0 - float(r["prob_class_0"])
@@ -375,18 +465,19 @@ def _threshold_checks(r: pd.Series) -> List[Dict[str, Any]]:
         return {"name": name, "metric": metric, "value": value, "threshold": threshold,
                 "exceeded": hit, "margin": value - threshold, "unit": unit, "note": note}
 
-    return [
-        check("Classical 11% abort", "Window QBER (W=50)", q, 0.11,
-              "Shor-Preskill BB84 abort limit"),
-        check("Z-basis 11% abort", "Rectilinear QBER", float(r["qber_rectilinear"]), 0.11,
-              "Same limit, Z basis only"),
-        check("X-basis 11% abort", "Diagonal QBER", float(r["qber_diagonal"]), 0.11,
-              "Same limit, X basis only"),
+    out = [
+        check("Classical 11% abort", "Window QBER (W=50)", q, abort, "Shor-Preskill BB84 abort limit"),
+        check("Z-basis 11% abort", "Rectilinear QBER", float(r["qber_rectilinear"]), abort, "Same limit, Z basis only"),
+        check("X-basis 11% abort", "Diagonal QBER", float(r["qber_diagonal"]), abort, "Same limit, X basis only"),
         check(f"Hoeffding dynamic (α={HOEFFDING_ALPHA:g})", "Window QBER (W=50)", q, hoeff,
               f"Assumes {e0:.0%} baseline, {n_bits:,.0f} bits"),
-        check("XGBoost temporal detector", "P(attack) = 1 − P(normal)", p_attack, 0.5,
-              "Alarm when argmax class ≠ Normal", exceeded=pred != 0, unit="prob"),
     ]
+    if "qber_ci_low" in r.index and pd.notna(r["qber_ci_low"]):
+        out.append(check("Finite-size 11% (Wilson)", "Block QBER 95% lower bound", float(r["qber_ci_low"]), abort,
+                         f"Block of {int(r.get('sifted_bits_block', 0)):,} sifted bits"))
+    out.append(check("XGBoost temporal detector", "P(attack) = 1 − P(normal)", p_attack, 0.5,
+                     "Alarm when argmax class ≠ Normal", exceeded=pred != 0, unit="prob"))
+    return out
 
 
 @app.get("/api/mdi")
@@ -394,18 +485,93 @@ def mdi():
     return {
         "attack": _csv("mdi_detector_attack_comparison.csv"),
         "key_rate": _csv("mdi_key_rate_vs_distance.csv"),
+        "provenance": {
+            "attack": _prov("results/metrics/mdi_detector_attack_comparison.csv", "none (analytic)",
+                            "Analytic model (no sampling)"),
+            "key_rate": _prov("results/metrics/mdi_key_rate_vs_distance.csv", "none (analytic)",
+                              "Analytic model (asymptotic key rates)"),
+        },
     }
 
 
 @app.get("/api/benchmarks")
 def benchmarks():
+    files = {
+        "overall": "multiattack_overall_benchmarks.csv",
+        "binary": "multiattack_binary_benchmarks.csv",
+        "per_class": "multiattack_per_class_f1.csv",
+        "ablation": "multiattack_feature_ablation.csv",
+        "multiseed": "multiattack_multiseed_per_seed.csv",
+        "summary": "multiattack_multiseed_summary.csv",
+        "comparison": "multiattack_model_comparison.csv",
+        "per_class_multiseed": "multiattack_per_class_metrics_multiseed.csv",
+        "confusion": "multiattack_confusion_matrix_multiseed.csv",
+        "latency": "multiattack_latency_vs_intensity.csv",
+        "reliability": "multiattack_reliability.csv",
+        "heldout": "multiattack_heldout_generalization.csv",
+        "per_class_multiseed_decoy": "multiattack_per_class_metrics_multiseed_decoy.csv",
+        "comparison_decoy": "multiattack_model_comparison_decoy.csv",
+        "trials": "trial_session_summary.csv",
+    }
+    out = {k: _csv(v) for k, v in files.items()}
+    cm = METRICS / files["confusion"]
+    if cm.exists():
+        m = pd.read_csv(cm, index_col=0)
+        out["confusion"] = {"labels": list(m.columns), "values": m.values.tolist()}
+    out["provenance"] = {k: _prov(f"results/metrics/{v}",
+                                  "seed 42" if k in ("overall", "binary", "per_class", "ablation") else SEEDS_MULTI)
+                         for k, v in files.items()}
+    return out
+
+
+@app.get("/api/channel")
+def channel():
     return {
-        "overall": _csv("multiattack_overall_benchmarks.csv"),
-        "per_class": _csv("multiattack_per_class_f1.csv"),
-        "ablation": _csv("multiattack_feature_ablation.csv"),
-        "multiseed": _csv("multiattack_multiseed_per_seed.csv"),
-        "summary": _csv("multiattack_multiseed_summary.csv"),
-        "trials": _csv("trial_session_summary.csv"),
+        "calibrated": _csv("multiattack_channel_generalization.csv"),
+        "legacy": _csv("cross_channel_generalization.csv"),
+        "provenance": {
+            "calibrated": _prov("results/metrics/multiattack_channel_generalization.csv", SEEDS_MULTI),
+            "legacy": _prov("results/metrics/cross_channel_generalization.csv",
+                            "seed 42 (legacy 3-class pipeline)"),
+        },
+    }
+
+
+@app.get("/api/data")
+def data():
+    sidecars = {}
+    for name in ("train_multiattack", "test_multiattack", "heldout_generalization"):
+        m = _json(PROCESSED / f"{name}.meta.json")
+        if m:
+            m.pop("features", None)
+            sidecars[name] = m
+    sess = PROCESSED / "sessions_multiattack.csv"
+    session_stats = None
+    if sess.exists():
+        s = pd.read_csv(sess)
+        session_stats = {
+            "by_split_class": s.groupby(["split", "class_id"]).size().unstack(fill_value=0).to_dict(orient="index"),
+            "distance_km": {sp: np.histogram(g["distance_km"], bins=12, range=(0, 120))[0].tolist()
+                            for sp, g in s.groupby("split")},
+            "distance_bins": np.linspace(0, 120, 13).tolist(),
+            "detector_types": s["detector_type"].value_counts().to_dict(),
+        }
+    return {
+        "sidecars": sidecars,
+        "sessions": session_stats,
+        "dataset_leakage": _json(METRICS / "multiattack_dataset_leakage_audit.json"),
+        "multiseed_leakage": _json(METRICS / "multiattack_leakage_audit.json"),
+        "real_calibration": _csv("real_vs_sim_qber_calibration.csv"),
+        "real_ood": _json(METRICS / "real_data_ood_summary.json"),
+        "class_names": CLASS_SHORT,
+        "provenance": {
+            "sidecars": _prov(["data/processed/train_multiattack.meta.json", "data/processed/test_multiattack.meta.json",
+                               "data/processed/heldout_generalization.meta.json"], "seed 42"),
+            "dataset_leakage": _prov("results/metrics/multiattack_dataset_leakage_audit.json", "seed 42"),
+            "multiseed_leakage": _prov("results/metrics/multiattack_leakage_audit.json", SEEDS_MULTI),
+            "real": _prov(["results/metrics/real_vs_sim_qber_calibration.csv",
+                           "results/metrics/real_data_ood_summary.json"], "simulated side: seed 7", REAL_LABEL),
+        },
     }
 
 

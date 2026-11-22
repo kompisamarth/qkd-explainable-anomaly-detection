@@ -141,3 +141,37 @@ simulator artefacts.
   the NumPy fallback, and the circuit fallback physics.
 
 No existing metric changed.
+
+## Section 6: Dashboard
+
+**Backend (`backend/server.py`)**
+* Runs on the calibrated engine with 7 classes, with physics descriptions rewritten to match the
+  new models.
+* New `POST /api/simulate/custom`: protocol (BB84 / decoy BB84), channel, fiber distance,
+  detector, attack, intensity, onset and seed. It flags settings outside the training range.
+* New `GET /api/channel` (fiber vs free-space) and `GET /api/data` (dataset sidecars, class
+  balance, distance histograms, leakage audits, real-data calibration and OOD results).
+* `GET /api/benchmarks` now serves the multi-seed comparison, per-class metrics, confusion
+  matrix, latency, reliability, held-out and decoy results.
+* Every result carries a `provenance` block (label, source files, seeds) and lists missing files.
+* The SHAP tab's threshold panel gains a finite-size (Wilson lower bound) check.
+
+**Frontend**
+* Eight tabs: Overview, Simulation (Blind / Guided / Custom), Classifier & SHAP, Benchmarks,
+  Channels, MDI-QKD, Data, Threat Atlas.
+* Simulation: per-block QBER with a shaded 95% Wilson band, window mean, and the 11% line.
+* Benchmarks:
+  * FNR/FPR bars with 95% CI whiskers for RF, XGBoost, SVM-RBF and the three threshold baselines;
+  * per-class F1 with ±1 sd whiskers and a confusion-matrix heatmap;
+  * decoy vs no-decoy F1, latency vs intensity, reliability curves, held-out results, ablation.
+* Channels: fiber vs free-space FPR and F1 with CIs.
+* Data: dataset metadata, class balance, distance histograms per split, leakage table, parameter
+  ranges, and a separately labelled real-data panel.
+* Every chart shows a provenance caption: **SIMULATED DATA**, **REAL DATA** or **ANALYTIC
+  MODEL**, plus source file and seed.
+* The stale hard-coded claims (85.6% accuracy, 99.4% vs 11.5% FNR, "five regimes") are removed;
+  headline numbers are read from the multi-seed summary.
+* `scripts/11` trial sessions now use the calibrated engine (7 classes).
+
+**Metric changes:** `trial_session_summary.csv` now has 7 rows from the calibrated engine. The
+MDI-QKD outputs are unchanged.
