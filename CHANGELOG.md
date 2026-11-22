@@ -89,3 +89,27 @@ metrics moved, and why. "Old" numbers are the committed results at `edaa8f7`.
 
 These numbers are lower than before. They are kept as they are: the old numbers measured
 simulator artefacts.
+
+## Section 3: Open-source and real data
+
+**Added**
+* `DATASETS.md` surveys Zenodo, IEEE DataPort and Kaggle (Figshare's API could not be queried;
+  stated). It covers 5 real-telemetry datasets and 6 synthetic ones, with links and licences.
+  **No public dataset contains labelled attacks on real hardware.**
+* Your untracked `data/raw/` files were identified as Zenodo 21792844 (Horgan et al., TCD /
+  CONNECT testbed, CC-BY-4.0). They are now cited; `--download` fetches the remaining files.
+* `src/data/real_telemetry.py` maps the real CSVs onto the order-independent part of the feature
+  schema, because the real rows are sorted by QBER and carry no timestamps.
+* `scripts/12_real_data_evaluation.py` (outputs labelled "Real data (benign, Zenodo 21792844)"):
+  * calibration of real against simulated benign QBER versus loss;
+  * an out-of-distribution false-alarm test.
+* `tests/test_real_telemetry.py` (3 tests).
+
+**Results (real data, reported separately)**
+* Calibration: the real Toshiba MU system without noise injection runs at 3.3–7.7% QBER over
+  10–30 dB. The simulator gives 2.2–6.0% (InGaAs SPAD) and 1.6% (SNSPD) at the same losses. The
+  real system's intrinsic error is about 3%, above the 1–2% literature range in `physics.yaml`.
+  This is reported, not tuned away.
+* OOD test: the simulation-trained model flags **all 8** local real benign blocks as
+  intercept-resend (false-alarm rate 100%); the fixed 11% threshold flags none. The model does
+  not transfer to this hardware without recalibrating its benign baseline.
