@@ -83,7 +83,7 @@ metrics moved, and why. "Old" numbers are the committed results at `edaa8f7`.
 | F1 time-shift | 0.947 | 0.554 | The old model's artificial X-basis misalignment is gone; the real signature is a click-rate drop that benign loss steps also produce |
 | F1 Trojan horse / beam splitting | n/a | 0.016 / 0.040 | Invisible to Bob's QBER telemetry by construction |
 | Held-out set (unseen intensities, 80–110 km) | n/a | accuracy 0.401, FPR **0.427** | At longer distances dark counts raise benign QBER, and the model reads that as an attack: a genuine generalization failure |
-| Largest single-feature AUC | 0.932 (PNS via a channel artefact) | 0.973 (intercept-resend via `multiscale_mean_w10`) | The only flag is the expected physical one (QBER for intercept-resend); every other class is ≤ 0.78 |
+| Largest single-feature AUC | 0.932 (mean of the per-seed maxima; last seed: time-shift via `basis_variance_ratio`, 0.920) | 0.973 (intercept-resend via `multiscale_mean_w10`) | The only flag is the expected physical one (QBER for intercept-resend); every other class is ≤ 0.78 |
 | Top SHAP feature | `loss_gradient` 1.29 (onset step, audit L-1) | `multiscale_mean_w10` 0.51 | Benign sessions now also contain loss steps and drift |
 | Ablation, most important group | basis-dependent (−7.2 points) | channel interaction (−4.7 points); the other groups are within noise | Basis asymmetry no longer has an artificial time-shift fingerprint |
 
