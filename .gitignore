@@ -44,3 +44,7 @@ Thumbs.db
 
 # Antigravity artifacts
 .gemini/
+
+# QpiAI API key (never commit)
+qcloud.env
+*.env

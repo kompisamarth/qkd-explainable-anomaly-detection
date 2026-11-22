@@ -113,3 +113,31 @@ simulator artefacts.
 * OOD test: the simulation-trained model flags **all 8** local real benign blocks as
   intercept-resend (false-alarm rate 100%); the fixed 11% threshold flags none. The model does
   not transfer to this hardware without recalibrating its benign baseline.
+
+## Section 4: QpiAI Quantum SDK integration (optional, isolated)
+
+**Added** `qpiai_extras/`. Nothing in the main pipeline imports it.
+* `backend.py` looks for an API key in `QPIAI_API_KEY`, then `API_KEY`, then a `qcloud.env`
+  file. It logs only where the key came from, never the key itself. If the SDK is not installed,
+  there is no key, or login fails, it falls back with a clear log message.
+* `qrng.py`: `QRNGSource` provides Alice's bits from the QpiAI QRNG, or NumPy as a fallback. It
+  plugs into the pulse-level simulator through the new `BB84Simulator.alice_source` hook. As the
+  SDK's own documentation states, the local `QpiAI-QSV-Local` QRNG is pseudo-random; only a QPU
+  device gives quantum randomness.
+* `bb84_circuit.py`: circuit-level BB84 with Z/X preparation and an intercept-resend Eve whose
+  measurement is a separate circuit run. It is validated against the NumPy simulator:
+
+  | | Circuit QBER | Theory | NumPy simulator |
+  |---|---|---|---|
+  | No Eve | 0.000 | 0.000 | 0.000 |
+  | Full intercept-resend (193 sifted rounds) | 0.264 | 0.250 ± 0.031 | 0.250 |
+
+  These were run on the fallback backend, because no QpiAI key was available here.
+* `figures.py`: Bloch-sphere and intercept-resend circuit figures (matplotlib and Qiskit fallback).
+* `run_demo.py` and `qpiai_bb84_demo.ipynb`; `requirements.txt` pins `qpiai-quantum==0.8.0` as an
+  optional extra.
+* `.gitignore` now ignores `qcloud.env` and `*.env`.
+* `tests/test_qpiai_extras.py` (4 tests): key lookup order, the key never appears in the status,
+  the NumPy fallback, and the circuit fallback physics.
+
+No existing metric changed.
