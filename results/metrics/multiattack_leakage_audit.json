@@ -1,81 +1,236 @@
 {
-  "nuisance_ranges": {
-    "base_qber": [
-      0.005,
-      0.06
-    ],
-    "channel_transmittance": [
-      0.1,
-      0.95
-    ],
-    "log10_dark_count": [
-      -6.0,
-      -4.3
-    ],
-    "det_eff_z": [
-      0.8,
-      1.0
-    ],
-    "det_eff_x_ratio": [
-      0.7,
-      1.0
-    ],
-    "ir_p_eve": [
-      0.05,
-      0.3
-    ],
-    "pns_mu": [
-      0.2,
-      0.45
-    ],
-    "pns_single_pass": [
-      0.2,
-      0.6
-    ],
-    "blinding_eff": [
-      0.7,
-      0.98
-    ],
-    "blinding_residual_qber": [
-      0.002,
-      0.02
-    ],
-    "ts_shift_prob": [
-      0.3,
-      0.85
-    ],
-    "ts_eff_x_ratio": [
-      0.3,
-      0.9
-    ],
-    "ts_x_misalign": [
-      0.04,
-      0.16
-    ]
-  },
-  "per_seed_max_single_feature_auc": [
-    0.9418905087209303,
-    0.9442065600775194,
-    0.9129250169573644,
-    0.9390372020348837,
-    0.9199276986434108
-  ],
-  "last_seed_audit": {
-    "1": {
-      "best_auc": 0.8677930910852713,
-      "feature": "multiscale_mean_w10"
+  "alert_threshold_auc": 0.95,
+  "computed_on": "train split of each seed",
+  "per_seed": {
+    "42": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.56771175708153,
+        "feature": "max_jump",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9764774999323509,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.5566521043249337,
+        "feature": "basis_burst_energy_x",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.7525972721304848,
+        "feature": "multiscale_mean_w10",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7718924940785616,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.5647819018910731,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.5526309136379879,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "max_auc": 0.9764774999323509,
+      "any_flagged": true
     },
-    "2": {
-      "best_auc": 0.8924383163759689,
-      "feature": "multiscale_fano_w25"
+    "43": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.559874606479105,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9709086135207243,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.5527464909347615,
+        "feature": "max_jump",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.7791767082004942,
+        "feature": "multiscale_mean_w10",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7638895823011813,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.563300400837502,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.574412722291828,
+        "feature": "max_jump",
+        "flagged": false
+      },
+      "max_auc": 0.9709086135207243,
+      "any_flagged": true
     },
-    "3": {
-      "best_auc": 0.8810877156007753,
-      "feature": "multiscale_mean_w10"
+    "44": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.5651185267069504,
+        "feature": "max_jump",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9738437649115702,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.5749587975702248,
+        "feature": "error_clustering_coefficient",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.762051460562553,
+        "feature": "multiscale_mean_w10",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7695046295692004,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.549898399167777,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.555915287019306,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "max_auc": 0.9738437649115702,
+      "any_flagged": true
     },
-    "4": {
-      "best_auc": 0.9199276986434108,
-      "feature": "basis_variance_ratio"
+    "45": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.5600895754997114,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9784480755565893,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.566429568222476,
+        "feature": "max_jump",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.7674995799497926,
+        "feature": "multiscale_mean_w10",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7520995918843284,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.5582841472182425,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.5718678035525799,
+        "feature": "max_jump",
+        "flagged": false
+      },
+      "max_auc": 0.9784480755565893,
+      "any_flagged": true
+    },
+    "46": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.5611806227706428,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9778271478850148,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.572791254483,
+        "feature": "max_jump",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.7665345515859288,
+        "feature": "multiscale_mean_w10",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7611934181058919,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.5453040020960059,
+        "feature": "qber_stability_index",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.5539771999348067,
+        "feature": "max_jump",
+        "flagged": false
+      },
+      "max_auc": 0.9778271478850148,
+      "any_flagged": true
     }
   }
 }

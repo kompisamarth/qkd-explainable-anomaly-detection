@@ -175,3 +175,73 @@ No existing metric changed.
 
 **Metric changes:** `trial_session_summary.csv` now has 7 rows from the calibrated engine. The
 MDI-QKD outputs are unchanged.
+
+## Section 5: ML evaluation
+
+**Added**
+* `scripts/10_multiseed_evaluation.py`, rewritten. For each of 5 seeds (42–46, 200 sessions per
+  class) it generates a fresh session-split dataset, a held-out set and a free-space set, then
+  trains Random Forest, XGBoost and SVM-RBF. The SVM trains on a session-stratified subsample of
+  at most 12,000 rows.
+* Every metric is reported as mean, sd and a 95% Student-t interval, clipped to [0, 1] for
+  rates: accuracy, macro-F1, per-class precision/recall/F1, confusion matrix (summed), binary
+  FNR (primary) and FPR, binary AUROC/AUPRC, macro one-vs-rest AUROC, top-label ECE, binary
+  Brier score, reliability curves, latency vs intensity tertile, pre-onset false-alarm rate,
+  held-out and free-space results, and a per-seed leakage audit.
+* Three threshold baselines: fixed 11% on the window mean, fixed 11% on one block, and
+  finite-size 11% (Wilson lower bound above 11%).
+* `--decoy` reruns everything with signal/decoy/vacuum intensities and the decoy features
+  (`*_decoy` files).
+* `src/evaluation/metrics.py`: binary rates, CI, ECE, reliability, latency.
+
+**Results (simulated, 5 seeds, mean [95% CI])**
+
+| | Old (5 classes, legacy engine) | New, 7 classes | New, 7 classes + decoy |
+|---|---|---|---|
+| XGBoost accuracy | 0.856 ± 0.014 (sd) | **0.514** [0.497, 0.531] | — |
+| XGBoost macro-F1 | 0.847 | **0.393** [0.372, 0.413] | **0.613** |
+| RF / SVM macro-F1 | not evaluated | 0.375 / 0.330 | 0.609 / 0.458 |
+| XGBoost FNR (missed attacks) | 0.115 | **0.573** [0.551, 0.596] | 0.350 |
+| XGBoost FPR (false alarms) | 0.077 | 0.155 [0.139, 0.170] | 0.105 |
+| Fixed 11% FNR / FPR | 0.994 / 0 | **1.000 / 0** (all three variants) | 1.000 / 0 |
+| Binary AUROC (XGBoost) | not reported | 0.661 | — |
+| Top-label ECE (XGBoost) | not reported | 0.106 | — |
+| Largest single-feature AUC | 0.932 | 0.976 (intercept-resend via QBER, the physical signal) | — |
+
+Per-class F1 for XGBoost, without and with decoy states:
+
+| Class | No decoy | Decoy |
+|---|---|---|
+| Normal | 0.59 | 0.71 |
+| Intercept-resend | 0.93 | 0.95 |
+| PNS | **0.08** | **0.77** |
+| Blinding | 0.58 | 0.79 |
+| Time-shift | 0.47 | 0.54 |
+| Trojan horse | 0.03 | 0.53 |
+| Beam splitting | 0.05 | 0.02 |
+
+* **Why the numbers fell.** Most of the drop from the old result comes from removing artefacts:
+  the photon-model fingerprint, stationary benign channels, and row-level CV. The rest comes from
+  adding two attacks that are invisible by design. The new numbers are kept as they are.
+* **Decoy states.** They make PNS detectable (0.08 → 0.77 F1), exactly as decoy-state theory
+  predicts.
+* **Trojan horse.** Its jump to 0.53 F1 under decoys is checked in a paired-seed comparison.
+  With SNSPDs, Eve's leaked light makes vacuum pulses click where honest dark counts almost never
+  do; with InGaAs SPADs the excess is small (median ×1.10). This depends entirely on the
+  *assumed* leak ratio (`forward_leak_ratio`, 1e-5–1e-4) and on there being no other background,
+  such as Raman noise. Treat it as an upper bound.
+* **Beam splitting** stays undetectable, as it should.
+* **Latency (XGBoost).**
+  * Intercept-resend: detected in 91% of low-intensity sessions (mean 8 blocks) and 100% of
+    mid/high ones (≈ 0 blocks).
+  * Blinding: 70–100% detected, latency 38 → 11 blocks as intensity rises.
+  * Time-shift: 90–97% detected, 15 → 7 blocks.
+  * PNS, Trojan horse and beam splitting: 12–49% "detected". With a 15% pre-onset false-alarm
+    rate per block, that is mostly chance.
+* **Held-out set** (unseen intensities, 80–110 km): XGBoost accuracy 0.404, FNR 0.458,
+  **FPR 0.364**. The model does not extrapolate to longer distances.
+* **Channel generalization** (fiber-trained, free-space tested): XGBoost FPR rises from 0.155 to
+  **0.503**, RF from 0.095 to 0.523. Log-normal fading looks like an attack to every model.
+  The 11% thresholds raise no alarms on either channel, so they never false-alarm but also
+  never catch anything.
+* **SHAP and ablation** (`scripts/09`) were regenerated on the session-grouped split in Section 2.
