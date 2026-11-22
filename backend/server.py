@@ -27,6 +27,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
 from src.features.time_series import (  # noqa: E402
+    FEATURE_CONTEXT_63,
     FEATURE_GROUPS_63,
     FEATURE_NAMES_63,
     CausalMultiAttackFeatureExtractor,
@@ -296,6 +297,18 @@ def simulate(req: SimReq):
     return _package(df, req.cls, float(seq.p_eve), onset)
 
 
+_explainer = None
+
+
+def _tree_explainer():
+    """Build the SHAP explainer once; parsing the XGBoost trees costs ~0.8 s per build."""
+    global _explainer
+    if _explainer is None:
+        import shap
+        _explainer = shap.TreeExplainer(_model)
+    return _explainer
+
+
 @app.get("/api/explain")
 def explain(session_id: str, block: int):
     df = _sessions.get(session_id)
@@ -307,15 +320,18 @@ def explain(session_id: str, block: int):
     if row.empty:
         raise HTTPException(404, "block not in session")
 
-    import shap
     x = row[FEATURE_NAMES_63].values.reshape(1, -1)
     pred = int(row["pred_class"].iloc[0])
-    sv = shap.TreeExplainer(_model).shap_values(x)
+    sv = _tree_explainer().shap_values(x)
     vals = sv[pred][0] if isinstance(sv, list) else sv[0, :, pred]
 
-    order = np.argsort(np.abs(vals))[::-1][:14]
-    top = [{"feature": FEATURE_NAMES_63[i], "shap": float(vals[i]),
-            "value": float(x[0, i])} for i in order]
+    group_of = {f: g for g, feats in FEATURE_GROUPS_63.items() for f in feats}
+    order = np.argsort(np.abs(vals))[::-1]
+    features = [{"rank": r + 1, "feature": FEATURE_NAMES_63[i], "shap": float(vals[i]),
+                 "value": float(x[0, i]), "group": group_of[FEATURE_NAMES_63[i]],
+                 "context": FEATURE_CONTEXT_63[FEATURE_NAMES_63[i]]}
+                for r, i in enumerate(order)]
+    top = features[:14]
 
     groups = {}
     for g, feats in FEATURE_GROUPS_63.items():
@@ -330,8 +346,47 @@ def explain(session_id: str, block: int):
         "pred_name": CLASS_NAMES[pred],
         "probs": [float(row[f"prob_class_{k}"].iloc[0]) for k in range(5)],
         "top_features": top,
+        "features": features,
         "groups": groups,
+        "thresholds": _threshold_checks(row.iloc[0]),
     }
+
+
+HOEFFDING_ALPHA = 0.01      # config.yaml models.hoeffding.alpha (target FPR <= 1%)
+RAW_PHOTONS_PER_BLOCK = 1024
+
+
+def _threshold_checks(r: pd.Series) -> List[Dict[str, Any]]:
+    """Does this block's evidence cross each detector's alarm threshold?
+
+    `exceeded` True means that detector raises an alarm on this block; False means
+    the block sits within the threshold, so an attack here would go unflagged by it.
+    """
+    q = float(r["qber_mean"])
+    # Hoeffding test on the W=50 window: N sifted bits ~ key rate x raw photons x W
+    n_bits = max(float(r["key_generation_rate"]) * RAW_PHOTONS_PER_BLOCK * _extractor.window_size, 1.0)
+    e0 = _extractor.base_qber
+    hoeff = e0 + float(np.sqrt(np.log(1.0 / HOEFFDING_ALPHA) / (2.0 * n_bits)))
+    p_attack = 1.0 - float(r["prob_class_0"])
+    pred = int(r["pred_class"])
+
+    def check(name, metric, value, threshold, note, exceeded=None, unit="pct"):
+        hit = bool(value > threshold) if exceeded is None else bool(exceeded)
+        return {"name": name, "metric": metric, "value": value, "threshold": threshold,
+                "exceeded": hit, "margin": value - threshold, "unit": unit, "note": note}
+
+    return [
+        check("Classical 11% abort", "Window QBER (W=50)", q, 0.11,
+              "Shor-Preskill BB84 abort limit"),
+        check("Z-basis 11% abort", "Rectilinear QBER", float(r["qber_rectilinear"]), 0.11,
+              "Same limit, Z basis only"),
+        check("X-basis 11% abort", "Diagonal QBER", float(r["qber_diagonal"]), 0.11,
+              "Same limit, X basis only"),
+        check(f"Hoeffding dynamic (α={HOEFFDING_ALPHA:g})", "Window QBER (W=50)", q, hoeff,
+              f"Assumes {e0:.0%} baseline, {n_bits:,.0f} bits"),
+        check("XGBoost temporal detector", "P(attack) = 1 − P(normal)", p_attack, 0.5,
+              "Alarm when argmax class ≠ Normal", exceeded=pred != 0, unit="prob"),
+    ]
 
 
 @app.get("/api/mdi")
@@ -363,12 +418,21 @@ def healthz():
 # --------------------------------------------------------------------------
 # Static frontend (mounted last so /api/* wins)
 # --------------------------------------------------------------------------
+class _RevalidatingStatic(StaticFiles):
+    """Static files that browsers must revalidate (ETag) so UI updates show on reload."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 if FRONTEND.exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND)), name="static")
+    app.mount("/static", _RevalidatingStatic(directory=str(FRONTEND)), name="static")
 
     @app.get("/")
     def index():
-        return FileResponse(str(FRONTEND / "index.html"))
+        return FileResponse(str(FRONTEND / "index.html"), headers={"Cache-Control": "no-cache"})
 else:
     @app.get("/")
     def missing():

@@ -467,32 +467,58 @@
   }
 
   async function loadExplain(block) {
+    // Dragging the slider fires several requests; only the latest may render
+    const req = S.explainReq = (S.explainReq || 0) + 1;
     $("#chShap").innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
     let d;
     try { d = await api(`/api/explain?session_id=${S.session.session_id}&block=${block}`); }
     catch (e) {
+      if (req !== S.explainReq) return;
       $("#chShap").innerHTML = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div>${esc(e.message)}</div></div>`;
       return;
     }
+    if (req !== S.explainReq) return;
+    try { renderExplain(d); }
+    catch (e) {
+      console.error(e);
+      $("#chShap").innerHTML = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div>Could not render this block's attribution: ${esc(e.message)}</div></div>`;
+    }
+  }
+
+  function renderExplain(d) {
     const truth = S.session.class_id;
     const ok = d.pred === truth;
+    // In blind mode the ground truth stays sealed here too until Reveal
+    const truthVisible = S.mode !== "blind" || S.revealed;
 
     $("#explainMeta").innerHTML = `
       <div class="stat ${d.pred === 0 ? "good" : "bad"}"><div class="bar"></div>
         <div class="k">Model Verdict</div><div class="v" style="font-size:1.2rem">${esc(d.pred_name)}</div>
-        <div class="s">Confidence ${pct(d.probs[d.pred], 1)}</div></div>
+        <div class="s">Confidence ${pct(d.probs[d.pred], 1)}</div></div>` + (truthVisible ? `
       <div class="stat info"><div class="bar"></div><div class="k">Ground Truth</div>
         <div class="v" style="font-size:1.2rem">${esc(S.meta.class_names[truth])}</div>
         <div class="s">Simulated physical regime</div></div>
       <div class="stat ${ok ? "good" : "warn"}"><div class="bar"></div><div class="k">Audit Outcome</div>
         <div class="v" style="font-size:1.2rem">${ok ? "Attribution Validated" : "Misclassified"}</div>
-        <div class="s">Block ${d.block}</div></div>`;
+        <div class="s">Block ${d.block}</div></div>` : `
+      <div class="stat"><div class="bar"></div><div class="k">Ground Truth</div>
+        <div class="v" style="font-size:1.2rem">${ICONS.lock} Sealed</div>
+        <div class="s">Reveal it in Live Monitor</div></div>`);
 
     Charts.hbars($("#chShap"), {
       diverging: true, labelW: 176,
       items: d.top_features.map(f => ({ label: f.feature, value: f.shap })),
       fmt: v => (v >= 0 ? "+" : "") + v.toFixed(3),
     });
+
+    // A server started before these fields existed still serves this file; say so
+    // instead of failing, and keep the rest of the tab working.
+    const stale = `<div class="banner warn"><span class="em">${ICONS.warn}</span><div>The running server predates this panel. Restart it (<code>python run_dashboard.py</code>) to load it.</div></div>`;
+    if (Array.isArray(d.thresholds)) renderThresholds(d.thresholds, truthVisible && truth !== 0);
+    else $("#shapThresholds").innerHTML = stale;
+    S.explain = d;
+    if (Array.isArray(d.features)) renderAllFeatures();
+    else $("#shapAll").innerHTML = stale;
 
     const gs = Object.entries(d.groups).sort((a, b) => b[1] - a[1]);
     $("#shapGroups").innerHTML = `<div class="grid g3" style="gap:10px">` + gs.map(([g, v]) => `
@@ -507,8 +533,84 @@
       `${t[0]} and ${t[1]} reflect an unnaturally uniform, deterministic pulse train. Blinded single-photon detectors driven by classical laser power yield lower error dispersion than physical quantum Poisson noise.`,
       `${t[0]} and ${t[1]} capture conjugate basis divergence. While mean aggregate QBER remains unremarkable, rectilinear (Z) and diagonal (X) error rates diverge significantly &mdash; exploiting detector timing differences.`,
     ];
-    $("#shapWords").innerHTML = `<p style="margin:0;line-height:1.55;">${reasons[d.pred]}</p>` + (ok ? "" :
+    $("#shapWords").innerHTML = `<p style="margin:0;line-height:1.55;">${reasons[d.pred]}</p>` + (ok || !truthVisible ? "" :
       `<div class="banner warn" style="margin-top:12px"><span class="em">${ICONS.warn}</span><div>This specific transmission block exhibited transient misclassification. Borderline attribution occurs primarily immediately following onset before the sliding window fully fills with attacked pulses.</div></div>`);
+  }
+
+  // Raw feature values span ~1e-6 .. 1e4, so pick precision by magnitude
+  function fnum(v) {
+    const a = Math.abs(v);
+    if (a === 0) return "0";
+    if (a >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (a >= 1) return v.toFixed(3);
+    if (a >= 1e-3) return v.toFixed(4);
+    return v.toExponential(2);
+  }
+
+  function renderThresholds(list, isAttack) {
+    const fmt = (v, unit) => unit === "prob" ? pct(v, 1) : pct(v, 2);
+    const fired = list.filter(t => t.exceeded).length;
+    const rows = list.map(t => {
+      // Gauge spans 0 .. 1.6x the threshold (or the value, if larger)
+      const span = Math.max(t.threshold * 1.6, t.value * 1.05, 1e-9);
+      const vw = Math.min(100, t.value / span * 100), tw = t.threshold / span * 100;
+      const status = t.exceeded
+        ? `<span class="th-chip alarm">${ICONS.alert} Alarm: exceeds threshold</span>`
+        : isAttack
+          ? `<span class="th-chip bypass">${ICONS.warn} Within threshold: attack bypasses</span>`
+          : `<span class="th-chip ok">${ICONS.check} Within threshold</span>`;
+      return `<div class="th-row ${t.exceeded ? "is-alarm" : ""}">
+        <div class="th-head"><b>${esc(t.name)}</b>${status}</div>
+        <div class="th-gauge" title="${esc(t.metric)}">
+          <div class="th-fill" style="width:${vw.toFixed(1)}%"></div>
+          <div class="th-line" style="left:${tw.toFixed(1)}%"></div>
+        </div>
+        <div class="th-meta"><span>${esc(t.metric)}: <b>${fmt(t.value, t.unit)}</b> vs limit <b>${fmt(t.threshold, t.unit)}</b>
+          (${t.margin >= 0 ? "+" : ""}${t.unit === "prob" ? (t.margin * 100).toFixed(1) + " pts" : (t.margin * 100).toFixed(2) + " pts"})</span>
+          <span class="muted">${esc(t.note)}</span></div>
+      </div>`;
+    }).join("");
+    const lead = fired === 0
+      ? `<div class="banner ${isAttack ? "warn" : "info"}"><span class="em">${isAttack ? ICONS.warn : ICONS.info}</span><div><b>No detector alarms on this block.</b> Every metric is within its threshold${isAttack ? ", so this attack goes unflagged here." : "."}</div></div>`
+      : `<div class="banner ${fired === list.length ? "bad" : "warn"}"><span class="em">${ICONS.alert}</span><div><b>${fired} of ${list.length} detectors alarm on this block.</b> ${list.length - fired} stay within their threshold.</div></div>`;
+    $("#shapThresholds").innerHTML = lead + `<div class="th-list">${rows}</div>`;
+  }
+
+  function renderAllFeatures() {
+    const d = S.explain;
+    if (!d) return;
+    const gsel = $("#shapAllGroup");
+    if (gsel.options.length === 1) {
+      Object.keys(S.meta.feature_groups).forEach(g =>
+        gsel.insertAdjacentHTML("beforeend", `<option value="${g}">${esc(g.replace(/_/g, " "))}</option>`));
+      gsel.addEventListener("change", renderAllFeatures);
+      $("#shapAllSort").addEventListener("change", renderAllFeatures);
+    }
+    const g = gsel.value, sort = $("#shapAllSort").value;
+    let fs = d.features.filter(f => !g || f.group === g);
+    if (sort === "pos") fs = fs.slice().sort((a, b) => b.shap - a.shap);
+    else if (sort === "neg") fs = fs.slice().sort((a, b) => a.shap - b.shap);
+    else if (sort === "group") fs = fs.slice().sort((a, b) => a.group.localeCompare(b.group) || a.rank - b.rank);
+    const mx = Math.max(...d.features.map(f => Math.abs(f.shap)), 1e-9);
+    const rows = fs.map(f => {
+      const w = Math.abs(f.shap) / mx * 50;
+      const pos = f.shap >= 0;
+      return `<tr>
+        <td class="muted">#${f.rank}</td>
+        <td><code>${esc(f.feature)}</code><div class="fx-ctx">${esc(f.context)}</div></td>
+        <td class="muted fx-grp">${esc(f.group.replace(/_/g, " "))}</td>
+        <td class="fx-num">${fnum(f.value)}</td>
+        <td class="fx-bar-cell"><div class="fx-bar"><span class="${pos ? "pos" : "neg"}"
+          style="${pos ? "left:50%" : "right:50%"};width:${w.toFixed(1)}%"></span></div></td>
+        <td class="fx-num ${pos ? "bad" : "good"}">${pos ? "+" : ""}${f.shap.toFixed(4)}</td>
+      </tr>`;
+    }).join("");
+    $("#shapAll").innerHTML = `<div class="fx-scroll"><table class="fx-table">
+      <thead><tr><th>Rank</th><th>Feature &amp; meaning</th><th>Group</th><th>Value</th>
+        <th>Away from &middot; toward verdict</th><th>SHAP</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+      <p class="cap" style="margin:10px 0 0">${fs.length} feature${fs.length === 1 ? "" : "s"} shown.
+        Positive SHAP pushes toward <b>${esc(d.pred_name)}</b>; negative pushes away from it.</p>`;
   }
 
   // ---------------------------------------------------------------- mdi

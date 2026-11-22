@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/styles.css?v=4">
 </head>
 <body>
 <div class="wrap">
@@ -340,6 +340,32 @@
           <div id="chShap"></div>
         </div>
         <div class="panel">
+          <h3>Threshold Verdicts for This Block</h3>
+          <p class="cap">Does this block's evidence cross each detector's alarm line, or stay within it?</p>
+          <div id="shapThresholds"></div>
+        </div>
+        <div class="panel">
+          <details class="fx-dd" id="shapAllDd">
+            <summary>
+              <span><b>All 63 Feature Attribution Vectors</b>
+                <span class="fx-dd-sub">SHAP value, raw value and meaning of every feature</span></span>
+              <span class="fx-dd-caret" aria-hidden="true"></span>
+            </summary>
+            <div class="fx-dd-body">
+              <div class="fx-dd-ctl">
+                <label>Group <select id="shapAllGroup"><option value="">All groups</option></select></label>
+                <label>Sort <select id="shapAllSort">
+                  <option value="abs">Largest |SHAP| first</option>
+                  <option value="pos">Pushes toward attack</option>
+                  <option value="neg">Pushes toward normal</option>
+                  <option value="group">By physics group</option>
+                </select></label>
+              </div>
+              <div id="shapAll"></div>
+            </div>
+          </details>
+        </div>
+        <div class="panel">
           <h3>Physics Subsystem Attribution Share</h3>
           <div id="shapGroups"></div>
         </div>
@@ -467,8 +493,8 @@
 
 </div>
 
-<script src="/static/charts.js"></script>
-<script src="/static/photons.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/charts.js?v=4"></script>
+<script src="/static/photons.js?v=4"></script>
+<script src="/static/app.js?v=4"></script>
 </body>
 </html>

@@ -1080,3 +1080,76 @@ h2.sec::after {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- SHAP tab: threshold verdicts ---------- */
+.th-list { display: grid; gap: 10px; margin-top: 12px; }
+.th-row {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: var(--bg-canvas);
+}
+.th-row.is-alarm { border-color: var(--crimson-border); background: var(--crimson-soft); }
+.th-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.th-head b { font-size: .88rem; color: var(--text-primary); }
+.th-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .74rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid;
+  white-space: nowrap;
+}
+.th-chip.alarm  { color: var(--crimson-text); background: #fff; border-color: var(--crimson-border); }
+.th-chip.ok     { color: var(--emerald-text); background: var(--emerald-soft); border-color: var(--emerald-border); }
+.th-chip.bypass { color: var(--amber-text); background: var(--amber-soft); border-color: var(--amber-border); }
+.th-gauge {
+  position: relative; height: 8px; margin: 9px 0 7px;
+  background: var(--bg-subtle); border-radius: 999px;
+}
+.th-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--accent); transition: width .6s var(--ease-smooth); }
+.th-row.is-alarm .th-fill { background: var(--crimson); }
+.th-line { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text-primary); border-radius: 1px; }
+.th-meta { display: flex; justify-content: space-between; gap: 4px 10px; flex-wrap: wrap; font-size: .78rem; color: var(--text-secondary); }
+
+/* ---------- SHAP tab: all-features dropdown ---------- */
+.fx-dd > summary {
+  list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.fx-dd > summary::-webkit-details-marker { display: none; }
+/* Opt out of the global details/summary card styling: this panel is already a card */
+.fx-dd { border: 0; margin: 0; background: none; overflow: visible; }
+.fx-dd > summary { padding: 0; font-weight: 400; font-size: inherit; }
+.fx-dd > summary::before { content: none; }
+.fx-dd > summary:hover { background: none; }
+.fx-dd > summary > span:first-child { flex: 1; min-width: 0; }
+.fx-dd > summary b { font-size: .98rem; color: var(--text-primary); }
+.fx-dd-sub { display: block; font-size: .8rem; color: var(--text-muted); margin-top: 2px; }
+.fx-dd-caret {
+  flex: none; width: 28px; height: 28px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium); position: relative; transition: transform .25s var(--ease-smooth);
+}
+.fx-dd-caret::after {
+  content: ""; position: absolute; left: 50%; top: 45%; width: 7px; height: 7px;
+  border-right: 2px solid var(--text-secondary); border-bottom: 2px solid var(--text-secondary);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.fx-dd[open] .fx-dd-caret { transform: rotate(180deg); }
+.fx-dd > summary:hover .fx-dd-caret { background: var(--bg-subtle); }
+.fx-dd-body { margin-top: 14px; }
+.fx-dd-ctl { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.fx-dd-ctl label { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--text-muted); font-weight: 600; }
+.fx-scroll { max-height: 520px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.fx-table { margin: 0; }
+.fx-table thead th { position: sticky; top: 0; background: var(--bg-canvas); z-index: 1; }
+.fx-table td { vertical-align: middle; }
+.fx-table code { font-family: var(--font-mono); font-size: .78rem; color: var(--text-primary); }
+.fx-ctx { font-family: var(--font-sans); font-size: .76rem; color: var(--text-muted); margin-top: 2px; }
+.fx-grp { font-family: var(--font-sans); font-size: .76rem; text-transform: capitalize; white-space: nowrap; }
+.fx-num { font-family: var(--font-mono); font-size: .78rem; text-align: right; white-space: nowrap; }
+.fx-bar-cell { min-width: 120px; }
+.fx-bar { position: relative; height: 10px; background: var(--bg-subtle); border-radius: 3px; }
+.fx-bar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border-active); }
+.fx-bar span { position: absolute; top: 0; bottom: 0; border-radius: 3px; min-width: 1px; }
+.fx-bar span.pos { background: var(--crimson); }
+.fx-bar span.neg { background: #0d9488; }
+@media (max-width: 720px) {
+  .fx-grp, .fx-table th:nth-child(3) { display: none; }
+}

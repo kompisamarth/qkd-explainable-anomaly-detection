@@ -321,6 +321,79 @@ for grp_key in ["statistical", "burst_instability", "spectral_temporal", "basis_
 
 assert len(FEATURE_NAMES_63) == 63, f"Expected exactly 63 features, got {len(FEATURE_NAMES_63)}"
 
+# Short plain-language context (4-5 words) for each feature, shown in the dashboard's SHAP tab
+FEATURE_CONTEXT_63 = {
+    # Statistical
+    "qber_mean": "Average error rate in window",
+    "qber_variance": "Spread of window error rates",
+    "qber_std": "Typical error-rate fluctuation size",
+    "qber_skewness": "Lopsidedness of error distribution",
+    "qber_kurtosis": "Heavy tails, rare error spikes",
+    "qber_iqr": "Middle-50% error rate spread",
+    "qber_cv": "Fluctuation relative to mean error",
+    # Burst & instability
+    "spike_density": "Share of blocks spiking >2σ",
+    "burst_duration": "Longest run of elevated errors",
+    "jump_energy": "Energy of block-to-block jumps",
+    "temporal_drift_slope": "Linear error trend across window",
+    "max_jump": "Largest single block-to-block jump",
+    "jump_count": "Number of abrupt error jumps",
+    "error_gap_mean": "Mean spacing between bit errors",
+    "error_gap_std": "Variability of bit-error spacing",
+    "error_gap_cv": "Irregularity of bit-error spacing",
+    "burstiness_index": "Bursty versus regular error pattern",
+    # Spectral & temporal
+    "autocorr_lag_1": "Error memory, 1 block apart",
+    "autocorr_lag_2": "Error memory, 2 blocks apart",
+    "autocorr_lag_3": "Error memory, 3 blocks apart",
+    "autocorr_lag_4": "Error memory, 4 blocks apart",
+    "autocorr_lag_5": "Error memory, 5 blocks apart",
+    "dft_low_energy": "Slow-varying error power share",
+    "dft_mid_energy": "Mid-frequency error power share",
+    "dft_high_energy": "Fast-flicker error power share",
+    "spectral_entropy": "Spread of error frequency content",
+    "spectral_centroid": "Dominant error fluctuation frequency",
+    "shannon_entropy": "Diversity of error-rate levels",
+    "ema_divergence": "Latest error versus smoothed trend",
+    # Basis-dependent
+    "qber_rectilinear": "Error rate in Z basis",
+    "qber_diagonal": "Error rate in X basis",
+    "basis_asymmetry": "Gap between Z, X errors",
+    "basis_ratio": "Z-to-X error rate ratio",
+    "basis_burst_energy_z": "Z-basis error jump energy",
+    "basis_burst_energy_x": "X-basis error jump energy",
+    "basis_variance_ratio": "Z versus X fluctuation ratio",
+    "basis_cross_correlation": "Z and X errors co-moving",
+    "basis_skewness_diff": "Z minus X error lopsidedness",
+    "basis_kurtosis_diff": "Z minus X tail heaviness",
+    "sift_ratio_z": "Share of key from Z",
+    "sift_ratio_x": "Share of key from X",
+    # Channel interaction
+    "key_generation_rate": "Sifted bits per sent photon",
+    "transmission_efficiency": "Fraction of photons detected",
+    "qber_loss_interaction": "Errors scaled by detection efficiency",
+    "qber_loss_product": "Errors weighted by photon loss",
+    "loss_anomaly_index": "Efficiency deviation from nominal 50%",
+    "dark_count_ratio": "Dark-count noise versus error rate",
+    "multiscale_mean_w10": "Mean error, last 10 blocks",
+    "multiscale_mean_w25": "Mean error, last 25 blocks",
+    "multiscale_mean_w50": "Mean error, last 50 blocks",
+    "multiscale_std_w10": "Error fluctuation, last 10 blocks",
+    "multiscale_std_w25": "Error fluctuation, last 25 blocks",
+    "multiscale_std_w50": "Error fluctuation, last 50 blocks",
+    "multiscale_fano_w10": "Noise-to-mean ratio, 10 blocks",
+    "multiscale_fano_w25": "Noise-to-mean ratio, 25 blocks",
+    "multiscale_fano_w50": "Noise-to-mean ratio, 50 blocks",
+    "multiscale_drift_w10": "Error trend, last 10 blocks",
+    "multiscale_drift_w25": "Error trend, last 25 blocks",
+    "multiscale_drift_w50": "Error trend, last 50 blocks",
+    "error_clustering_coefficient": "Tendency of errors to cluster",
+    "loss_gradient": "Trend in detection efficiency",
+    "efficiency_entropy": "Variety of detection-efficiency levels",
+    "qber_stability_index": "Closeness to 3% baseline error",
+}
+assert set(FEATURE_CONTEXT_63) == set(FEATURE_NAMES_63), "Every feature needs a context phrase"
+
 
 class CausalMultiAttackFeatureExtractor:
     """Vectorized causal extractor for the 63 physics-informed features (W=50)."""
