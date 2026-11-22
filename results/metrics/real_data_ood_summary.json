@@ -1,0 +1,22 @@
+{
+  "data_label": "Real data (benign, Zenodo 21792844)",
+  "citation": "Horgan J. et al., QKD Network Characterisation and Coexistence Datasets with Standardised Performance Metrics and Experimental Methods, Zenodo (2026), doi:10.5281/zenodo.21792844 (CC-BY-4.0)",
+  "features": [
+    "qber_mean",
+    "qber_variance",
+    "qber_std",
+    "qber_skewness",
+    "qber_kurtosis",
+    "qber_iqr",
+    "qber_cv",
+    "shannon_entropy"
+  ],
+  "real_blocks": 8,
+  "model": "XGBoost trained on simulated train split, order-free QBER features only",
+  "false_alarm_rate": 1.0,
+  "fixed11_false_alarm_rate": 0.0,
+  "predicted_class_counts": {
+    "Fractional Intercept-Resend": 8
+  },
+  "caveat": "Real records are sorted by QBER within each attenuation setting and have no timestamps, so temporal features cannot be computed; a real record's QBER is estimated over a much larger key block than a simulated block."
+}

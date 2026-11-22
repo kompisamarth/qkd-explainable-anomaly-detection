@@ -32,8 +32,9 @@ from src.models.ml_classifiers import QKDMLDetector
 
 
 def load_config() -> dict:
-    with open(ROOT_DIR / "config.yaml", "r") as f:
-        return yaml.safe_load(f)
+    """config.yaml merged with config/physics.yaml (see src/config.py)."""
+    from src.config import load_config as _load
+    return _load()
 
 
 def key_rate_sweep(model: SNSTFQKD, distances: np.ndarray, e_d_bb84: float) -> pd.DataFrame:

@@ -1,0 +1,2 @@
+# Optional: only for qpiai_extras/. The main pipeline never needs it.
+qpiai-quantum==0.8.0

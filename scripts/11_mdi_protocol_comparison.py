@@ -41,9 +41,11 @@ FIGURES = ROOT_DIR / "results" / "figures"
 
 def key_rate_curves():
     print("[1/3] MDI-QKD key rate vs distance (with TF-QKD / BB84 / PLOB comparison)...")
-    mdi_ch = MDIChannelParams()
+    from src.config import load_physics
+    phys = load_physics()
+    mdi_ch = MDIChannelParams(**phys["mdi_qkd"]["channel"])
     mdi = MDIQKD(mdi_ch)
-    tf_ch = ChannelParams()
+    tf_ch = ChannelParams(**phys["tf_qkd"]["channel"])
     sns = SNSTFQKD(tf_ch)
 
     distances = np.arange(0, 451, 25)
@@ -133,7 +135,9 @@ def attack_comparison():
 
 
 def trial_sessions():
-    print("\n[3/3] Generating replayable trial sessions (leakage-free distribution)...")
+    print("\n[3/3] Generating replayable trial sessions (calibrated engine, one per class)...")
+    from src.config import load_physics
+    from src.simulator.calibrated import CLASS_NAMES as CAL_NAMES, CalibratedBB84Simulator
     ckpt = ROOT_DIR / "data" / "processed" / "checkpoints" / "xgb_multiattack.joblib"
     model = joblib.load(ckpt) if ckpt.exists() else None
     if model is None:
@@ -141,28 +145,21 @@ def trial_sessions():
 
     out_dir = ROOT_DIR / "data" / "processed" / "trial_sessions"
     out_dir.mkdir(parents=True, exist_ok=True)
-
+    phys = load_physics()["calibrated_bb84"]
     extractor = CausalMultiAttackFeatureExtractor(window_size=50, ema_span=10)
     summary = []
-    for cls in range(5):
-        sim = BB84Simulator(raw_photons_per_block=1024, random_state=2000 + cls)
-        seq = sim.simulate_session(
-            session_id=cls,
-            target_attack_class=cls,
-            channel_type="fiber",
-            blocks_per_session=150,
-            attack_start_block=76,
-            attack_mode="multiattack",
-            randomize_nuisance=True,
-        )
+    for cls in range(len(CAL_NAMES)):
+        seed = 2000 + cls
+        sim = CalibratedBB84Simulator(phys, random_state=seed)
+        seq = sim.simulate_session(cls, cls, channel_type="fiber", blocks_per_session=150,
+                                   attack_start_block=76, session_seed=seed)
         df = extractor.extract_from_session(seq)
 
         if model is not None:
             probs = model.predict_proba(df[FEATURE_NAMES_63].values)
             df["pred_class"] = probs.argmax(axis=1)
-            for k in range(5):
+            for k in range(probs.shape[1]):
                 df[f"prob_class_{k}"] = probs[:, k]
-
             post = df[df["block_index"] >= 76]
             correct = float((post["pred_class"] == cls).mean()) if len(post) else float("nan")
             alarms = post[post["pred_class"] != 0]["block_index"]
@@ -173,15 +170,12 @@ def trial_sessions():
         path = out_dir / f"trial_class{cls}.csv"
         df.to_csv(path, index=False)
         summary.append({
-            "class_id": cls,
-            "class_name": CLASS_SHORT[cls],
-            "p_eve": float(seq.p_eve),
-            "blocks": len(df),
-            "post_onset_accuracy": correct,
-            "detection_latency_blocks": delta_t,
-            "file": path.name,
+            "class_id": cls, "class_name": CAL_NAMES[cls], "p_eve": float(seq.p_eve), "seed": seed,
+            "distance_km": float(seq.physics.distance_km), "detector": seq.physics.detector_type,
+            "blocks": len(df), "post_onset_accuracy": correct, "detection_latency_blocks": delta_t,
+            "file": path.name, "data_label": "Simulated data",
         })
-        print(f"   class {cls} ({CLASS_SHORT[cls]:14s}) p_eve={seq.p_eve:.3f} "
+        print(f"   class {cls} ({CAL_NAMES[cls]:32s}) intensity={seq.p_eve:.3f} "
               f"post-onset acc={correct:.3f} dT={delta_t}")
 
     sdf = pd.DataFrame(summary)

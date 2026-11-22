@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below. If you use the real QKD telemetry, also cite Zenodo 21792844 (see references)."
+title: "Explainable ML for Eavesdropping Detection in Quantum Key Distribution"
+type: software
+authors:
+  - family-names: Kompi
+    given-names: Samarth
+license: MIT
+repository-code: "https://github.com/kompisamarth/qkd-explainable-anomaly-detection"
+keywords:
+  - quantum key distribution
+  - BB84
+  - eavesdropping detection
+  - QBER
+  - machine learning
+  - explainability
+  - SHAP
+references:
+  - type: dataset
+    title: "QKD Network Characterisation and Coexistence Datasets with Standardised Performance Metrics and Experimental Methods"
+    authors:
+      - family-names: Horgan
+        given-names: Jerry
+      - family-names: Quigley
+        given-names: Niall
+      - family-names: Hajar
+        given-names: Bennouri
+      - family-names: Briantcev
+        given-names: Dmitrii
+      - family-names: Kaszubowska-Anandarajah
+        given-names: Aleksandra
+      - family-names: Kilper
+        given-names: Daniel
+    year: 2026
+    doi: 10.5281/zenodo.21792844
+    license: CC-BY-4.0

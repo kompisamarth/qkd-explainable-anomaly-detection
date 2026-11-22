@@ -1,0 +1,45 @@
+{
+  "qpiai_status": {
+    "sdk_installed": false,
+    "api_key_found": false,
+    "key_source": "none",
+    "usable": false,
+    "reason": "qpiai-quantum is not installed (pip install -r qpiai_extras/requirements.txt)"
+  },
+  "qrng_source": "NumPy PCG64 fallback (QpiAI unavailable)",
+  "qrng_bit_mean": 0.5014,
+  "validation": {
+    "p_eve=0.0": {
+      "circuit": {
+        "backend": "exact (NumPy Born-rule fallback)",
+        "rounds": 400,
+        "sifted": 193,
+        "p_eve": 0.0,
+        "qber": 0.0,
+        "theory": 0.0,
+        "std_error": 0.0,
+        "within_3_sigma": true,
+        "qpiai_reason": "qpiai-quantum is not installed (pip install -r qpiai_extras/requirements.txt)"
+      },
+      "numpy_simulator_qber": 0.0
+    },
+    "p_eve=1.0": {
+      "circuit": {
+        "backend": "exact (NumPy Born-rule fallback)",
+        "rounds": 400,
+        "sifted": 193,
+        "p_eve": 1.0,
+        "qber": 0.26424870466321243,
+        "theory": 0.25,
+        "std_error": 0.03116893630962685,
+        "within_3_sigma": true,
+        "qpiai_reason": "qpiai-quantum is not installed (pip install -r qpiai_extras/requirements.txt)"
+      },
+      "numpy_simulator_qber": 0.24994510211007526
+    }
+  },
+  "simulator_with_qrng": {
+    "qber_pre": 0.030308397636033015,
+    "qber_post": 0.08883818770555013
+  }
+}

@@ -98,6 +98,17 @@
       f.svg.appendChild(t);
     }
 
+    // Optional uncertainty band, e.g. a per-block 95% confidence interval: {lo, hi, color, label}
+    if (o.band && o.band.lo && o.band.hi) {
+      const up = [], dn = [];
+      o.band.hi.forEach((v, i) => { if (v != null && o.band.lo[i] != null) { up.push([sx(i), sy(Math.min(v, yMax))]); dn.push([sx(i), sy(Math.max(o.band.lo[i], yMin))]); } });
+      if (up.length > 1) {
+        const d = up.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ")
+          + " " + dn.reverse().map(p => "L" + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") + " Z";
+        f.svg.appendChild(el("path", { d, fill: o.band.color || "#0d9488", opacity: .16 }));
+      }
+    }
+
     o.series.forEach((s, si) => {
       const pts = s.data.map((v, i) => (v == null ? null : [sx(i), sy(v)])).filter(Boolean);
       if (pts.length < 2) return;
@@ -224,7 +235,7 @@
     const pad = { l: o.labelW, r: 54, t: 8, b: 8 };
     const f = frame(620, h, pad);
 
-    const mx = Math.max(...o.items.map(i => Math.abs(i.value)), 1e-9);
+    const mx = o.max != null ? o.max : Math.max(...o.items.map(i => Math.max(Math.abs(i.value), i.hi != null ? Math.abs(i.hi) : 0)), 1e-9);
     const zero = o.diverging ? pad.l + f.iw / 2 : pad.l;
     const scale = o.diverging ? (f.iw / 2) / mx : f.iw / mx;
 
@@ -260,7 +271,15 @@
         "text-anchor": it.value < 0 && o.diverging ? "end" : "start",
         "font-family": "ui-monospace,monospace",
       });
-      vt.textContent = o.fmt(it.value);
+      // Error whisker (e.g. 95% CI or +/- 1 sd over seeds): it.lo / it.hi in value units
+      if (it.lo != null && it.hi != null && !o.diverging) {
+        const xl = zero + Math.max(it.lo, 0) * scale, xh = zero + Math.min(it.hi, mx) * scale, yc = y + (rh - 8) / 2;
+        f.svg.appendChild(el("line", { x1: xl, x2: xh, y1: yc, y2: yc, stroke: "#0f172a", "stroke-width": 1.3 }));
+        f.svg.appendChild(el("line", { x1: xl, x2: xl, y1: yc - 4, y2: yc + 4, stroke: "#0f172a", "stroke-width": 1.3 }));
+        f.svg.appendChild(el("line", { x1: xh, x2: xh, y1: yc - 4, y2: yc + 4, stroke: "#0f172a", "stroke-width": 1.3 }));
+        vt.setAttribute("x", Math.max(xh, x + Math.max(w, 1.5)) + 6);
+      }
+      vt.textContent = o.fmt(it.value) + (it.err != null ? ` ± ${o.fmt(it.err)}` : "");
       vt.style.opacity = 0;
       vt.style.animation = `fadeUp .4s var(--ease-out) ${0.35 + i * 0.035}s forwards`;
       f.svg.appendChild(vt);
@@ -314,6 +333,35 @@
     container.appendChild(f.svg);
   }
 
+  /** Confusion-matrix heatmap. opts: {labels, values (rows = true), normalize} */
+  function heatmap(container, opts) {
+    const labels = opts.labels, n = labels.length;
+    const vals = opts.values.map(r => {
+      const s = r.reduce((a, b) => a + b, 0) || 1;
+      return opts.normalize === false ? r : r.map(v => v / s);
+    });
+    const cell = 52, padL = 118, padT = 86;
+    const f = frame(padL + n * cell + 10, padT + n * cell + 26, { l: padL, r: 10, t: padT, b: 26 });
+    labels.forEach((lb, j) => {
+      const t = el("text", { x: padL + j * cell + cell / 2, y: padT - 8, fill: "#334155", "font-size": 9.5,
+        "text-anchor": "start", transform: `rotate(-40 ${padL + j * cell + cell / 2} ${padT - 8})` });
+      t.textContent = lb; f.svg.appendChild(t);
+      const r = el("text", { x: padL - 8, y: padT + j * cell + cell / 2 + 4, fill: "#334155", "font-size": 9.5, "text-anchor": "end" });
+      r.textContent = lb; f.svg.appendChild(r);
+    });
+    vals.forEach((row, i) => row.forEach((v, j) => {
+      const shade = Math.round(255 - v * 200);
+      f.svg.appendChild(el("rect", { x: padL + j * cell, y: padT + i * cell, width: cell - 2, height: cell - 2, rx: 3,
+        fill: i === j ? `rgb(${shade - 40 < 0 ? 0 : shade - 40},${Math.min(255, shade + 20)},${shade})` : `rgb(255,${shade},${shade})` }));
+      const t = el("text", { x: padL + j * cell + cell / 2 - 1, y: padT + i * cell + cell / 2 + 3, "font-size": 10,
+        "text-anchor": "middle", fill: v > 0.55 ? "#ffffff" : "#0f172a", "font-family": "ui-monospace,monospace" });
+      t.textContent = (v * 100).toFixed(0) + "%"; f.svg.appendChild(t);
+    }));
+    const cap = el("text", { x: padL, y: padT + n * cell + 18, fill: "#64748b", "font-size": 9.5 });
+    cap.textContent = "rows: true class, columns: predicted, row-normalised"; f.svg.appendChild(cap);
+    container.innerHTML = ""; container.appendChild(f.svg);
+  }
+
   /** Animated number count-up. */
   function countUp(node, target, dec = 2, suffix = "") {
     const dur = 900, t0 = performance.now();
@@ -333,5 +381,5 @@
     @keyframes haloPulse { 0%,100% { r:6; opacity:.30 } 50% { r:11; opacity:.08 } }`;
   document.head.appendChild(sheet);
 
-  global.Charts = { line, logLine, hbars, dots, countUp };
+  global.Charts = { line, logLine, hbars, dots, heatmap, countUp };
 })(window);

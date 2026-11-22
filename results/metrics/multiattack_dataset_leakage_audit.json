@@ -1,0 +1,122 @@
+{
+  "alert_threshold_auc": 0.95,
+  "computed_on": "train split",
+  "seed": 42,
+  "classes": {
+    "0": {
+      "class_name": "Normal Channel",
+      "best_auc": 0.568285478170028,
+      "feature": "max_jump",
+      "flagged": false
+    },
+    "1": {
+      "class_name": "Fractional Intercept-Resend",
+      "best_auc": 0.9728554142034042,
+      "feature": "multiscale_mean_w10",
+      "flagged": true
+    },
+    "2": {
+      "class_name": "Photon Number Splitting",
+      "best_auc": 0.5416732600611927,
+      "feature": "max_jump",
+      "flagged": false
+    },
+    "3": {
+      "class_name": "Detector Blinding (Fake State)",
+      "best_auc": 0.7845655587983625,
+      "feature": "multiscale_mean_w10",
+      "flagged": false
+    },
+    "4": {
+      "class_name": "Time-Shift",
+      "best_auc": 0.7618943040045266,
+      "feature": "loss_gradient",
+      "flagged": false
+    },
+    "5": {
+      "class_name": "Trojan Horse (simplified)",
+      "best_auc": 0.5640575811806614,
+      "feature": "qber_stability_index",
+      "flagged": false
+    },
+    "6": {
+      "class_name": "Beam Splitting",
+      "best_auc": 0.538535650768891,
+      "feature": "temporal_drift_slope",
+      "flagged": false
+    },
+    "max_auc": 0.9728554142034042,
+    "any_flagged": true
+  },
+  "parameter_ranges": {
+    "training": {
+      "fiber_distance_km": [
+        5.0,
+        80.0
+      ],
+      "attack_intensity": {
+        "intercept_resend": [
+          0.05,
+          0.3
+        ],
+        "pns": [
+          0.4,
+          1.0
+        ],
+        "detector_blinding": [
+          0.3,
+          1.0
+        ],
+        "time_shift": [
+          0.3,
+          0.9
+        ],
+        "trojan_horse": [
+          0.01,
+          0.2
+        ],
+        "beam_splitting": [
+          0.1,
+          0.5
+        ]
+      }
+    },
+    "heldout": {
+      "fiber_distance_km": [
+        80.0,
+        110.0
+      ],
+      "attack_intensity": {
+        "intercept_resend": [
+          0.3,
+          0.45
+        ],
+        "pns": [
+          0.2,
+          0.4
+        ],
+        "detector_blinding": [
+          0.1,
+          0.3
+        ],
+        "time_shift": [
+          0.9,
+          1.0
+        ],
+        "trojan_horse": [
+          0.2,
+          0.4
+        ],
+        "beam_splitting": [
+          0.5,
+          0.7
+        ]
+      }
+    },
+    "detector_types": [
+      "ingaas_spad",
+      "snspd"
+    ],
+    "decoy_enabled": false
+  }
+}

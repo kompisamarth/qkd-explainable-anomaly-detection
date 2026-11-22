@@ -44,3 +44,14 @@ Thumbs.db
 
 # Antigravity artifacts
 .gemini/
+
+# QpiAI API key (never commit)
+qcloud.env
+*.env
+
+# Generated datasets (regenerate with scripts/06; sidecars describe local files only)
+data/processed/*.parquet
+data/processed/*.meta.json
+data/processed/smoke/
+results/metrics/*_smoke.*
+results/figures/*_smoke.png

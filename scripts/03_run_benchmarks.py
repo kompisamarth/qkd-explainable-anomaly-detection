@@ -30,8 +30,9 @@ from src.evaluation.benchmarks import (
 
 
 def load_config() -> dict:
-    with open(ROOT_DIR / "config.yaml", "r") as f:
-        return yaml.safe_load(f)
+    """config.yaml merged with config/physics.yaml (see src/config.py)."""
+    from src.config import load_config as _load
+    return _load()
 
 
 class StaticThresholdDetector:

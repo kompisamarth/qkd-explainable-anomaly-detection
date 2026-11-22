@@ -1,5 +1,5 @@
 # QKD Explainable Anomaly Detection Configuration
-# Protocol: BB84 with Decoy/Discrete Block Sifting & Noise Modeling
+# Pipeline and ML settings. Physics: config/physics.yaml.
 
 simulation:
   random_seed: 42
@@ -8,13 +8,9 @@ simulation:
   blocks_per_session: 200           # B: Total sequential transmission blocks per session
   attack_start_block: 101           # T_attack: Block index where Eve becomes active (1-indexed)
   
-physics:
-  baseline_qber: 0.03               # e_0: Stationary fiber background noise (3%)
-  abort_qber_threshold: 0.11        # Static 11% BB84 theoretical threshold
-  scintillation_std: 0.30           # Stationary std of AR(1) log-QBER (was 0.008: QBER std 0.0002, below the
-                                    # ~0.0075 binomial noise of a 512-bit block, so the channel shift was invisible)
-  scintillation_ar1_phi: 0.75       # Temporal correlation parameter for atmospheric turbulence
-  
+# Physical parameters (noise, loss, detectors, attacks) live in config/physics.yaml
+# with literature sources; src/config.py merges them in as cfg["physics"] etc.
+
 classes:
   class_0_benign:
     name: "Benign Noise"
@@ -63,14 +59,7 @@ paths:
 
 # Modern protocol: Sending-or-Not-Sending Twin-Field QKD (scripts/05_modern_qkd_tfqkd.py)
 tf_qkd:
-  channel:
-    alpha_db_per_km: 0.2            # Standard fiber attenuation
-    eta_det: 0.6                    # Charlie's detector efficiency
-    p_dark: 1.0e-8                  # Dark-count probability per pulse
-    phase_noise_rad: 0.35           # Residual phase error after compensation (~3.3% X error)
-    phase_slices: 16                # M phase slices for X-window phase matching
-    f_ec: 1.1                       # Error-correction inefficiency
-  bb84_misalignment: 0.015          # e_d for the decoy-state BB84 comparison curve
+  # channel + bb84_misalignment: see config/physics.yaml (tf_qkd)
   time_series:
     distance_km: 200
     intensities: {eps: 0.05, mu_z: 0.45, mu_1: 0.08, mu_2: 0.30}
@@ -90,15 +79,19 @@ tf_qkd:
 
 # Phase 2: Multi-Attack Classification (5 Classes, 63 Physics Features)
 multiattack:
-  classes:
-    0: "Normal Channel"
-    1: "Fractional Intercept-Resend"
-    2: "Photon Number Splitting"
-    3: "Fake State Blinding"
-    4: "Time-Shift"
+  # engine: "calibrated" (config/physics.yaml calibrated_bb84, 7 classes) or "legacy"
+  # (bb84_engine with legacy_multiattack_nuisance, 5 classes; reproduces pre-2026-11 results)
+  engine: calibrated
+  # Class ids follow src/simulator/calibrated.CLASSES:
+  # 0 Normal, 1 IR, 2 PNS, 3 Blinding, 4 Time-Shift, 5 Trojan horse, 6 Beam splitting
+  class_ids: [0, 1, 2, 3, 4, 5, 6]
+  channel: fiber
+  test_split: 0.20                  # fraction of SESSIONS held out (never rows)
+  heldout_sessions_per_class: 100   # generalisation set: unseen intensities and distances
+  cv_folds: 5                       # GroupKFold by session id
   window_size: 50
   ema_span: 10
-  sessions_per_class: 1000          # 5,000 sessions total (~500k feature rows)
+  sessions_per_class: 400           # 2,800 sessions (7 classes), ~283k window rows
   blocks_per_session: 150
   attack_start_block: 76
   raw_photons_per_block: 1024

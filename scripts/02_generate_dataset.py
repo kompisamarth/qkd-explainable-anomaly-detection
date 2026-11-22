@@ -21,9 +21,9 @@ from src.features.time_series import CausalTimeSeriesExtractor
 
 
 def load_config() -> dict:
-    config_path = ROOT_DIR / "config.yaml"
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+    """config.yaml merged with config/physics.yaml (see src/config.py)."""
+    from src.config import load_config as _load
+    return _load()
 
 
 def generate_split_sessions(

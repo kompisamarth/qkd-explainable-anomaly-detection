@@ -1,0 +1,236 @@
+{
+  "alert_threshold_auc": 0.95,
+  "computed_on": "train split of each seed",
+  "per_seed": {
+    "42": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.6208281636262947,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9822252402530579,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.9077206677240115,
+        "feature": "decoy_gain_ratio",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.9260274561519246,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7699130007568984,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.6327212863556655,
+        "feature": "vacuum_gain_ratio",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.6040672730575702,
+        "feature": "decoy_gain_ratio",
+        "flagged": false
+      },
+      "max_auc": 0.9822252402530579,
+      "any_flagged": true
+    },
+    "43": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.6153094187631672,
+        "feature": "decoy_gain_ratio",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.977933063464873,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.890124052768988,
+        "feature": "decoy_gain_ratio",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.9359611516440605,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7608530329981811,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.6241754065088184,
+        "feature": "vacuum_gain_ratio",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.6099262307060844,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "max_auc": 0.977933063464873,
+      "any_flagged": true
+    },
+    "44": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.6123089075386869,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9814743344064056,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.9072719814015806,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.9280527970812323,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7690009806436734,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.6427770346169588,
+        "feature": "vacuum_gain_ratio",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.6121866260828279,
+        "feature": "decoy_gain_ratio",
+        "flagged": false
+      },
+      "max_auc": 0.9814743344064056,
+      "any_flagged": true
+    },
+    "45": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.6092666159594102,
+        "feature": "decoy_gain_ratio",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9851433145797556,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.8900879754554303,
+        "feature": "decoy_gain_ratio",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.9325629140348548,
+        "feature": "decoy_gain_ratio",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.750493991954291,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.6363203556007622,
+        "feature": "vacuum_gain_ratio",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.6004749870701768,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "max_auc": 0.9851433145797556,
+      "any_flagged": true
+    },
+    "46": {
+      "0": {
+        "class_name": "Normal Channel",
+        "best_auc": 0.6054762417107811,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "1": {
+        "class_name": "Fractional Intercept-Resend",
+        "best_auc": 0.9840655074139185,
+        "feature": "multiscale_mean_w10",
+        "flagged": true
+      },
+      "2": {
+        "class_name": "Photon Number Splitting",
+        "best_auc": 0.8966197868395696,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "3": {
+        "class_name": "Detector Blinding (Fake State)",
+        "best_auc": 0.9356165740475672,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "4": {
+        "class_name": "Time-Shift",
+        "best_auc": 0.7605289222177073,
+        "feature": "loss_gradient",
+        "flagged": false
+      },
+      "5": {
+        "class_name": "Trojan Horse (simplified)",
+        "best_auc": 0.6332088340915741,
+        "feature": "vacuum_gain_ratio",
+        "flagged": false
+      },
+      "6": {
+        "class_name": "Beam Splitting",
+        "best_auc": 0.5973171689630201,
+        "feature": "y1_lower_bound_ratio",
+        "flagged": false
+      },
+      "max_auc": 0.9840655074139185,
+      "any_flagged": true
+    }
+  }
+}

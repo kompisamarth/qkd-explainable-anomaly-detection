@@ -22,8 +22,22 @@
     meta: null, session: null, scn: null, src: "trial",
     mode: "blind", revealed: false,
     idx: 0, playing: true, timer: null, stage: null,
-    mdi: null, bench: null, atlas: 0, drawnOnce: {},
+    mdi: null, bench: null, chan: null, data: null, atlas: 0, drawnOnce: {},
   };
+
+  // Every chart carries its source: label (simulated / real / analytic), files and seeds.
+  function prov(id, p, extra) {
+    const node = document.getElementById(id);
+    if (!node || !p) return;
+    const real = /real/i.test(p.label || ""), analytic = /analytic/i.test(p.label || "");
+    // Live sessions have no result file: name the engine and model that produced them instead
+    const files = (p.files || [p.file]).filter(Boolean).concat(p.files || p.file ? [] : [p.engine, p.model].filter(Boolean));
+    const missing = (p.missing || []).length ? ` <b style="color:var(--crimson)">missing: ${esc(p.missing.join(", "))}</b>` : "";
+    node.innerHTML = `<span class="prov-badge ${real ? "real" : analytic ? "analytic" : "sim"}">${esc(p.label || "Simulated data")}</span>
+      <span>source: ${files.map(f => `<code>${esc(f)}</code>`).join(", ") || "&mdash;"}</span>
+      <span>${esc(p.seeds != null ? p.seeds : (p.seed != null ? "seed " + p.seed : ""))}</span>${extra ? `<span>${extra}</span>` : ""}${missing}`;
+  }
+  const ci = r => r && r.ci95_low != null ? ` (95% CI ${pct(r.ci95_low, 1)}&ndash;${pct(r.ci95_high, 1)})` : "";
 
   function fatal(msg) {
     let bar = document.getElementById("fatalBar");
@@ -52,6 +66,8 @@
     $$(".view").forEach(v => v.classList.toggle("active", v.id === "v-" + name));
     if (name === "mdi" && !S.mdi) loadMdi();
     if (name === "bench" && !S.bench) loadBench();
+    if (name === "channel" && !S.chan) loadChannel();
+    if (name === "data" && !S.data) loadData();
     if (name === "explain") renderExplainCtl();
   }
   $$(".tab").forEach(t => t.addEventListener("click", () => showView(t.dataset.v)));
@@ -70,12 +86,9 @@
     }
     S.meta = await api("/api/meta");
 
-    $$("[data-count]").forEach(n => {
-      const dec = n.dataset.dec != null ? +n.dataset.dec : 2;
-      Charts.countUp(n, +n.dataset.count, dec, n.dataset.suffix || "");
-    });
-
+    renderOverview();
     renderScenarios();
+    setupCustom();
     renderAtlas();
     S.stage = Photons.create($("#photons"));
     setupControls();
@@ -94,7 +107,8 @@
   function applyMode() {
     const isBlind = (S.mode === "blind");
     $("#blindSide").style.display = isBlind ? "" : "none";
-    $("#guidedSide").style.display = isBlind ? "none" : "";
+    $("#guidedSide").style.display = S.mode === "guided" ? "" : "none";
+    $("#customSide").style.display = S.mode === "custom" ? "" : "none";
     $("#lookBanner").style.display = isBlind ? "none" : "";
     $("#scnPhysicsPanel").style.display = isBlind ? "none" : "";
     $("#revealPanel").style.display = isBlind ? "" : "none";
@@ -113,6 +127,8 @@
         applyMode();
         if (S.mode === "blind") {
           runBlind();
+        } else if (S.mode === "custom") {
+          runCustom();
         } else {
           selectScenario(0);
           run();
@@ -183,6 +199,69 @@
   $("#inBlocks").addEventListener("input", () => {
     $("#inOnset").max = Math.max(55, +$("#inBlocks").value - 20); syncRange();
   });
+
+  function setupCustom() {
+    const c = S.meta.controls || {};
+    $("#cAttack").innerHTML = S.meta.class_names.map((n, i) => `<option value="${i}"${i === 1 ? " selected" : ""}>${esc(n)}</option>`).join("");
+    const lo = c.fiber_distance_km || [5, 80], hlo = c.heldout_distance_km || [80, 110];
+    const syncC = () => {
+      const fib = $("#cChannel").value === "fiber";
+      $("#cDistWrap").style.display = fib ? "" : "none";
+      const d = +$("#cDist").value;
+      $("#lblCDist").textContent = d + " km";
+      $("#cDistNote").innerHTML = (d < lo[0] || d > lo[1])
+        ? `<span style="color:var(--amber-text)">Outside the training range ${lo[0]}&ndash;${lo[1]} km${d >= hlo[0] && d <= hlo[1] ? " (held-out range)" : ""}: expect more false alarms.</span>`
+        : `Training range ${lo[0]}&ndash;${lo[1]} km.`;
+      const cls = +$("#cAttack").value;
+      const r = (c.attack_intensity || {})[cls];
+      $("#cIntWrap").style.display = cls === 0 ? "none" : "";
+      if (r) {
+        const v = +$("#cInt").value;
+        $("#lblCInt").textContent = v.toFixed(2);
+        $("#cIntNote").innerHTML = (v < r[0] || v > r[1])
+          ? `<span style="color:var(--amber-text)">Outside the training range ${r[0]}&ndash;${r[1]}.</span>` : `Training range ${r[0]}&ndash;${r[1]}.`;
+      }
+      $("#lblCOnset").textContent = $("#cOnset").value;
+    };
+    $("#cAttack").addEventListener("change", () => {
+      const r = (c.attack_intensity || {})[+$("#cAttack").value];
+      if (r) $("#cInt").value = ((r[0] + r[1]) / 2).toFixed(2);
+      syncC();
+    });
+    ["cChannel", "cDist", "cInt", "cOnset"].forEach(id => $("#" + id).addEventListener("input", syncC));
+    $("#btnRunCustom").addEventListener("click", runCustom);
+    syncC();
+  }
+
+  async function runCustom() {
+    const btn = $("#btnRunCustom");
+    btn.disabled = true; btn.innerHTML = `${ICONS.play} Simulating...`;
+    stopPlay();
+    S.revealed = true;
+    try {
+      const cls = +$("#cAttack").value;
+      S.session = await api("/api/simulate/custom", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          protocol: $("#cProtocol").value, channel: $("#cChannel").value, distance_km: +$("#cDist").value,
+          cls, intensity: cls === 0 ? null : +$("#cInt").value, detector: $("#cDetector").value,
+          onset: +$("#cOnset").value, seed: +$("#cSeed").value,
+        }),
+      });
+      $("#scnTitle").textContent = "Custom simulation: " + S.meta.class_full[cls];
+      const ph = S.session.physics || {};
+      $("#scnHead").textContent = `${S.session.provenance.protocol === "decoy_bb84" ? "Decoy-state BB84" : "BB84"}, ` +
+        `${ph.channel_type === "free_space" ? "free space" : (ph.distance_km || 0).toFixed(0) + " km fibre"}, ` +
+        `${(ph.loss_db || 0).toFixed(1)} dB loss, ${ph.detector_type}, e_d ${pct(ph.e_d0 || 0, 2)}.`;
+      S.drawnOnce = {}; S.idx = 0;
+      renderMonitorStatic();
+      startPlay();
+    } catch (e) {
+      $("#verdictA").innerHTML = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div>${esc(e.message)}</div></div>`;
+    } finally {
+      btn.disabled = false; btn.innerHTML = `${ICONS.play} Simulate`;
+    }
+  }
 
   async function runBlind() {
     const btn = $("#btnRunBlind");
@@ -323,6 +402,7 @@
       <div class="kv"><span>Detection challenge</span><span>${esc(ph.hard)}</span></div>
     `;
 
+    prov("provMon", s.provenance, s.provenance.out_of_training_range ? "outside the training distance range" : "");
     drawMonitor(true);
   }
 
@@ -337,10 +417,13 @@
     // Show onset marker only if revealed or in guided mode
     const showOnset = (S.revealed || S.mode === "guided") && onsetI <= S.idx;
 
+    const series = [{ name: "window mean (W=50)", color: "#0d9488", data: cut(s.qber), width: 2.6 }];
+    if (s.qber_block) series.unshift({ name: "block QBER", color: "#64748b", data: cut(s.qber_block), width: 1 });
     Charts.line($("#chQber"), {
       xs, animate: anim, pulseLast: true, yMax: 0.14,
       fmtY: v => (v * 100).toFixed(0) + "%",
-      series: [{ name: "window-mean QBER", color: "#0d9488", data: cut(s.qber), fill: true }],
+      band: s.ci_low ? { lo: cut(s.ci_low), hi: cut(s.ci_high), color: "#64748b" } : null,
+      series,
       threshold: { y: 0.11, color: "#dc2626", label: "11.0% abort" },
       markers: [
         { i: showOnset ? onsetI : null, color: "#d97706", label: "onset" },
@@ -359,8 +442,8 @@
     });
 
     Charts.line($("#chEff"), {
-      xs, animate: anim, pulseLast: true, yMax: 1,
-      fmtY: v => (v * 100).toFixed(0) + "%",
+      xs, animate: anim, pulseLast: true,
+      fmtY: v => (v * 100).toFixed(v < 0.01 ? 3 : 1) + "%",
       series: [{ name: "transmission efficiency", color: "#0d9488", data: cut(s.efficiency), fill: true }],
       markers: [{ i: showOnset ? onsetI : null, color: "#d97706", label: "onset" }],
     });
@@ -467,32 +550,59 @@
   }
 
   async function loadExplain(block) {
+    // Dragging the slider fires several requests; only the latest may render
+    const req = S.explainReq = (S.explainReq || 0) + 1;
     $("#chShap").innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
     let d;
     try { d = await api(`/api/explain?session_id=${S.session.session_id}&block=${block}`); }
     catch (e) {
+      if (req !== S.explainReq) return;
       $("#chShap").innerHTML = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div>${esc(e.message)}</div></div>`;
       return;
     }
+    if (req !== S.explainReq) return;
+    try { renderExplain(d); }
+    catch (e) {
+      console.error(e);
+      $("#chShap").innerHTML = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div>Could not render this block's attribution: ${esc(e.message)}</div></div>`;
+    }
+  }
+
+  function renderExplain(d) {
     const truth = S.session.class_id;
     const ok = d.pred === truth;
+    // In blind mode the ground truth stays sealed here too until Reveal
+    const truthVisible = S.mode !== "blind" || S.revealed;
 
     $("#explainMeta").innerHTML = `
       <div class="stat ${d.pred === 0 ? "good" : "bad"}"><div class="bar"></div>
         <div class="k">Model Verdict</div><div class="v" style="font-size:1.2rem">${esc(d.pred_name)}</div>
-        <div class="s">Confidence ${pct(d.probs[d.pred], 1)}</div></div>
+        <div class="s">Confidence ${pct(d.probs[d.pred], 1)}</div></div>` + (truthVisible ? `
       <div class="stat info"><div class="bar"></div><div class="k">Ground Truth</div>
         <div class="v" style="font-size:1.2rem">${esc(S.meta.class_names[truth])}</div>
         <div class="s">Simulated physical regime</div></div>
       <div class="stat ${ok ? "good" : "warn"}"><div class="bar"></div><div class="k">Audit Outcome</div>
         <div class="v" style="font-size:1.2rem">${ok ? "Attribution Validated" : "Misclassified"}</div>
-        <div class="s">Block ${d.block}</div></div>`;
+        <div class="s">Block ${d.block}</div></div>` : `
+      <div class="stat"><div class="bar"></div><div class="k">Ground Truth</div>
+        <div class="v" style="font-size:1.2rem">${ICONS.lock} Sealed</div>
+        <div class="s">Reveal it in Live Monitor</div></div>`);
 
     Charts.hbars($("#chShap"), {
       diverging: true, labelW: 176,
       items: d.top_features.map(f => ({ label: f.feature, value: f.shap })),
       fmt: v => (v >= 0 ? "+" : "") + v.toFixed(3),
     });
+
+    // A server started before these fields existed still serves this file; say so
+    // instead of failing, and keep the rest of the tab working.
+    const stale = `<div class="banner warn"><span class="em">${ICONS.warn}</span><div>The running server predates this panel. Restart it (<code>python run_dashboard.py</code>) to load it.</div></div>`;
+    if (Array.isArray(d.thresholds)) renderThresholds(d.thresholds, truthVisible && truth !== 0);
+    else $("#shapThresholds").innerHTML = stale;
+    prov("provShap", d.provenance || { label: "Simulated data" }, "block " + d.block);
+    S.explain = d;
+    if (Array.isArray(d.features)) renderAllFeatures();
+    else $("#shapAll").innerHTML = stale;
 
     const gs = Object.entries(d.groups).sort((a, b) => b[1] - a[1]);
     $("#shapGroups").innerHTML = `<div class="grid g3" style="gap:10px">` + gs.map(([g, v]) => `
@@ -501,14 +611,92 @@
 
     const t = d.top_features.slice(0, 2).map(f => `<code>${esc(f.feature)}</code>`);
     const reasons = [
-      `${t[0]} and ${t[1]} align with uncompromised quantum channel dynamics: stationary error moments, symmetric conjugate bases, and transmission yield consistent with loss.`,
-      `${t[0]} and ${t[1]} exhibit the characteristic signature of intercept-resend: discontinuous step elevation in error variance and temporal jump energy, while scalar QBER remains below 11%.`,
-      `${t[0]} and ${t[1]} identify an anomalous yield deficit. Multi-photon pulse splitting depresses detected key yield without proportional error rate elevation &mdash; the unambiguous fingerprint of PNS.`,
-      `${t[0]} and ${t[1]} reflect an unnaturally uniform, deterministic pulse train. Blinded single-photon detectors driven by classical laser power yield lower error dispersion than physical quantum Poisson noise.`,
-      `${t[0]} and ${t[1]} capture conjugate basis divergence. While mean aggregate QBER remains unremarkable, rectilinear (Z) and diagonal (X) error rates diverge significantly &mdash; exploiting detector timing differences.`,
+      `${t[0]} and ${t[1]} are consistent with a benign channel: QBER and click rate within the drift and loss variation every session shows.`,
+      `${t[0]} and ${t[1]} show the intercept-resend signature: a step rise in short-window QBER (about a quarter of the intercepted fraction) while the window mean stays below 11%.`,
+      `${t[0]} and ${t[1]} drive a PNS verdict. A gain-matched PNS attack leaves QBER and click rate unchanged, so without decoy states this attribution is weak.`,
+      `${t[0]} and ${t[1]} point to detector blinding: QBER fell below the optical misalignment floor, which honest single-photon detection cannot do.`,
+      `${t[0]} and ${t[1]} drive a time-shift verdict: the click rate dropped while QBER stayed near its baseline. Benign loss steps can look the same, so treat this as a lead, not proof.`,
+      `${t[0]} and ${t[1]} drive a Trojan-horse verdict. Bob's telemetry carries almost no Trojan signature in this model, so this attribution is weak; Alice's watchdog photodiode is the real test.`,
+      `${t[0]} and ${t[1]} drive a beam-splitting verdict. A loss-compensated tap leaves Bob's statistics unchanged, so this attribution is weak by construction.`,
     ];
-    $("#shapWords").innerHTML = `<p style="margin:0;line-height:1.55;">${reasons[d.pred]}</p>` + (ok ? "" :
+    $("#shapWords").innerHTML = `<p style="margin:0;line-height:1.55;">${reasons[d.pred]}</p>` + (ok || !truthVisible ? "" :
       `<div class="banner warn" style="margin-top:12px"><span class="em">${ICONS.warn}</span><div>This specific transmission block exhibited transient misclassification. Borderline attribution occurs primarily immediately following onset before the sliding window fully fills with attacked pulses.</div></div>`);
+  }
+
+  // Raw feature values span ~1e-6 .. 1e4, so pick precision by magnitude
+  function fnum(v) {
+    const a = Math.abs(v);
+    if (a === 0) return "0";
+    if (a >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (a >= 1) return v.toFixed(3);
+    if (a >= 1e-3) return v.toFixed(4);
+    return v.toExponential(2);
+  }
+
+  function renderThresholds(list, isAttack) {
+    const fmt = (v, unit) => unit === "prob" ? pct(v, 1) : pct(v, 2);
+    const fired = list.filter(t => t.exceeded).length;
+    const rows = list.map(t => {
+      // Gauge spans 0 .. 1.6x the threshold (or the value, if larger)
+      const span = Math.max(t.threshold * 1.6, t.value * 1.05, 1e-9);
+      const vw = Math.min(100, t.value / span * 100), tw = t.threshold / span * 100;
+      const status = t.exceeded
+        ? `<span class="th-chip alarm">${ICONS.alert} Alarm: exceeds threshold</span>`
+        : isAttack
+          ? `<span class="th-chip bypass">${ICONS.warn} Within threshold: attack bypasses</span>`
+          : `<span class="th-chip ok">${ICONS.check} Within threshold</span>`;
+      return `<div class="th-row ${t.exceeded ? "is-alarm" : ""}">
+        <div class="th-head"><b>${esc(t.name)}</b>${status}</div>
+        <div class="th-gauge" title="${esc(t.metric)}">
+          <div class="th-fill" style="width:${vw.toFixed(1)}%"></div>
+          <div class="th-line" style="left:${tw.toFixed(1)}%"></div>
+        </div>
+        <div class="th-meta"><span>${esc(t.metric)}: <b>${fmt(t.value, t.unit)}</b> vs limit <b>${fmt(t.threshold, t.unit)}</b>
+          (${t.margin >= 0 ? "+" : ""}${t.unit === "prob" ? (t.margin * 100).toFixed(1) + " pts" : (t.margin * 100).toFixed(2) + " pts"})</span>
+          <span class="muted">${esc(t.note)}</span></div>
+      </div>`;
+    }).join("");
+    const lead = fired === 0
+      ? `<div class="banner ${isAttack ? "warn" : "info"}"><span class="em">${isAttack ? ICONS.warn : ICONS.info}</span><div><b>No detector alarms on this block.</b> Every metric is within its threshold${isAttack ? ", so this attack goes unflagged here." : "."}</div></div>`
+      : `<div class="banner ${fired === list.length ? "bad" : "warn"}"><span class="em">${ICONS.alert}</span><div><b>${fired} of ${list.length} detectors alarm on this block.</b> ${list.length - fired} stay within their threshold.</div></div>`;
+    $("#shapThresholds").innerHTML = lead + `<div class="th-list">${rows}</div>`;
+  }
+
+  function renderAllFeatures() {
+    const d = S.explain;
+    if (!d) return;
+    const gsel = $("#shapAllGroup");
+    if (gsel.options.length === 1) {
+      Object.keys(S.meta.feature_groups).forEach(g =>
+        gsel.insertAdjacentHTML("beforeend", `<option value="${g}">${esc(g.replace(/_/g, " "))}</option>`));
+      gsel.addEventListener("change", renderAllFeatures);
+      $("#shapAllSort").addEventListener("change", renderAllFeatures);
+    }
+    const g = gsel.value, sort = $("#shapAllSort").value;
+    let fs = d.features.filter(f => !g || f.group === g);
+    if (sort === "pos") fs = fs.slice().sort((a, b) => b.shap - a.shap);
+    else if (sort === "neg") fs = fs.slice().sort((a, b) => a.shap - b.shap);
+    else if (sort === "group") fs = fs.slice().sort((a, b) => a.group.localeCompare(b.group) || a.rank - b.rank);
+    const mx = Math.max(...d.features.map(f => Math.abs(f.shap)), 1e-9);
+    const rows = fs.map(f => {
+      const w = Math.abs(f.shap) / mx * 50;
+      const pos = f.shap >= 0;
+      return `<tr>
+        <td class="muted">#${f.rank}</td>
+        <td><code>${esc(f.feature)}</code><div class="fx-ctx">${esc(f.context)}</div></td>
+        <td class="muted fx-grp">${esc(f.group.replace(/_/g, " "))}</td>
+        <td class="fx-num">${fnum(f.value)}</td>
+        <td class="fx-bar-cell"><div class="fx-bar"><span class="${pos ? "pos" : "neg"}"
+          style="${pos ? "left:50%" : "right:50%"};width:${w.toFixed(1)}%"></span></div></td>
+        <td class="fx-num ${pos ? "bad" : "good"}">${pos ? "+" : ""}${f.shap.toFixed(4)}</td>
+      </tr>`;
+    }).join("");
+    $("#shapAll").innerHTML = `<div class="fx-scroll"><table class="fx-table">
+      <thead><tr><th>Rank</th><th>Feature &amp; meaning</th><th>Group</th><th>Value</th>
+        <th>Away from &middot; toward verdict</th><th>SHAP</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+      <p class="cap" style="margin:10px 0 0">${fs.length} feature${fs.length === 1 ? "" : "s"} shown.
+        Positive SHAP pushes toward <b>${esc(d.pred_name)}</b>; negative pushes away from it.</p>`;
   }
 
   // ---------------------------------------------------------------- mdi
@@ -518,6 +706,8 @@
     syncRange(); renderMdiCards();
 
     const a = S.mdi.attack, kr = S.mdi.key_rate;
+    prov("provMdiMon", S.mdi.provenance && S.mdi.provenance.attack);
+    prov("provMdiRate", S.mdi.provenance && S.mdi.provenance.key_rate);
     if (a) {
       Charts.line($("#chMdiMon"), {
         xs: a.map(r => (r.p_control * 100).toFixed(0) + "%"), yMax: 0.58,
@@ -581,52 +771,222 @@
   }
 
   // ---------------------------------------------------------------- bench
+  const MODEL_LABEL = { xgb: "XGBoost", rf: "Random Forest", svm: "SVM-RBF" };
+  function table(rows, cols, fmt) {
+    if (!rows || !rows.length) return '<p class="muted">Not generated yet.</p>';
+    cols = cols || Object.keys(rows[0]);
+    return `<table><thead><tr>${cols.map(c => `<th>${esc(c.replace(/_/g, " "))}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map(r => `<tr>${cols.map(c => {
+        let v = r[c];
+        if (fmt && fmt[c]) v = fmt[c](v, r);
+        else if (typeof v === "number") v = Math.abs(v) < 1 && v !== 0 ? v.toFixed(4) : v.toFixed(3);
+        return `<td>${v == null ? "&mdash;" : v}</td>`;
+      }).join("")}</tr>`).join("")}</tbody></table>`;
+  }
+
   async function loadBench() {
     S.bench = await api("/api/benchmarks");
-    const b = S.bench;
+    const b = S.bench, P = b.provenance || {};
     const sm = {};
     (b.summary || []).forEach(r => { sm[r[Object.keys(r)[0]]] = r; });
-
-    const tile = (k, v, s, kind) =>
+    const tile = (k, v, sub, kind) =>
       `<div class="stat ${kind}"><div class="bar"></div><div class="k">${k}</div>
-       <div class="v">${v}</div><div class="s">${s}</div></div>`;
+       <div class="v">${v}</div><div class="s">${sub}</div></div>`;
+    const m = (k, d = 2) => sm[k] ? pct(sm[k].mean, d) : "&mdash;";
     $("#benchKpis").innerHTML =
-      tile("Held-Out Accuracy", pct(sm.accuracy?.mean ?? 0, 2), "± " + pct(sm.accuracy?.std ?? 0, 2) + " over 5 seeds", "info") +
-      tile("Macro-F1 Score", (sm.macro_f1?.mean ?? 0).toFixed(4), "± " + (sm.macro_f1?.std ?? 0).toFixed(4), "info") +
-      tile("Temporal Model FNR", pct(sm.xgb_binary_fnr?.mean ?? 0, 2), "Conventional 11% rule: " + pct(sm.fixed11_binary_fnr?.mean ?? 0, 1), "good") +
-      tile("Max Single-Feature AUC", (sm.max_single_feature_auc?.mean ?? 0).toFixed(3), "No synthetic label leakage", "warn");
+      tile("7-class accuracy (XGBoost)", m("accuracy"), sm.accuracy ? `95% CI ${pct(sm.accuracy.ci95_low, 1)}&ndash;${pct(sm.accuracy.ci95_high, 1)}, ${sm.accuracy.n_seeds} seeds` : "", "info") +
+      tile("Macro-F1", sm.macro_f1 ? sm.macro_f1.mean.toFixed(3) : "&mdash;", sm.macro_f1 ? `&plusmn; ${sm.macro_f1.std.toFixed(3)} sd` : "", "info") +
+      tile("Missed attacks (FNR)", m("xgb_binary_fnr"), "fixed 11% threshold: " + m("fixed11_binary_fnr", 1), "warn") +
+      tile("False alarms (FPR)", m("xgb_binary_fpr"), "fixed 11% threshold: " + m("fixed11_binary_fpr", 1), "warn");
+    prov("provBenchKpi", P.summary);
+
+    const cmp = b.comparison || [];
+    const bar = (metric, el) => {
+      const rows = cmp.filter(r => r.metric === metric);
+      if (!rows.length) { $(el).innerHTML = '<p class="muted">Run scripts/10_multiseed_evaluation.py</p>'; return; }
+      Charts.hbars($(el), {
+        labelW: 210, max: 1,
+        items: rows.map(r => ({ label: MODEL_LABEL[r.model] || r.model, value: r.mean, lo: r.ci95_low, hi: r.ci95_high,
+          color: MODEL_LABEL[r.model] ? "#0d9488" : "#94a3b8" })),
+        fmt: v => pct(v, 1),
+      });
+    };
+    bar("binary_fnr", "#chCmpFnr"); bar("binary_fpr", "#chCmpFpr");
+    prov("provCmp", P.comparison, "whiskers: 95% CI over seeds");
+    const metrics = ["accuracy", "macro_f1", "binary_fnr", "binary_fpr", "binary_auroc", "binary_auprc", "ece_top_label"];
+    const models = [...new Set(cmp.map(r => r.model))];
+    $("#tblCmp").innerHTML = table(models.map(mo => {
+      const row = { model: MODEL_LABEL[mo] || mo };
+      metrics.forEach(k => { const r = cmp.find(x => x.model === mo && x.metric === k); row[k] = r ? r : null; });
+      return row;
+    }), ["model", ...metrics], Object.fromEntries(metrics.map(k => [k, v => v ? `${v.mean.toFixed(3)} <span class="muted">&plusmn;${v.std.toFixed(3)}</span>` : "&mdash;"])));
+
+    const drawPC = () => {
+      const mo = $("#pcModel").value;
+      const rows = (b.per_class_multiseed || []).filter(r => r.model === mo);
+      if (!rows.length) { $("#chPerClass").innerHTML = '<p class="muted">Not generated yet.</p>'; return; }
+      Charts.hbars($("#chPerClass"), {
+        labelW: 130, max: 1,
+        items: rows.map(r => ({ label: S.meta.class_names[r.class_id], value: r.f1_mean,
+          lo: Math.max(0, r.f1_mean - (r.f1_std || 0)), hi: Math.min(1, r.f1_mean + (r.f1_std || 0)),
+          color: S.meta.class_colors[r.class_id] })),
+        fmt: v => v.toFixed(2),
+      });
+    };
+    $("#pcModel").onchange = drawPC; drawPC();
+    prov("provPerClass", P.per_class_multiseed, "whiskers: &plusmn; 1 sd over seeds");
+
+    if (b.confusion && b.confusion.values) {
+      Charts.heatmap($("#chCm"), { labels: S.meta.class_names, values: b.confusion.values });
+    } else $("#chCm").innerHTML = '<p class="muted">Not generated yet.</p>';
+    prov("provCm", P.confusion);
+
+    const dpc = b.per_class_multiseed_decoy || [];
+    if (dpc.length && b.per_class_multiseed) {
+      const items = [];
+      S.meta.class_names.forEach((nm, c) => {
+        const a1 = (b.per_class_multiseed || []).find(r => r.model === "xgb" && r.class_id === c);
+        const a2 = dpc.find(r => r.model === "xgb" && r.class_id === c);
+        if (a1) items.push({ label: nm + " (no decoy)", value: a1.f1_mean, lo: a1.f1_mean - a1.f1_std, hi: a1.f1_mean + a1.f1_std, color: "#94a3b8" });
+        if (a2) items.push({ label: nm + " (decoy)", value: a2.f1_mean, lo: a2.f1_mean - a2.f1_std, hi: a2.f1_mean + a2.f1_std, color: S.meta.class_colors[c] });
+      });
+      Charts.hbars($("#chDecoy"), { labelW: 190, max: 1, items, fmt: v => v.toFixed(2) });
+    } else $("#chDecoy").innerHTML = '<p class="muted">Run scripts/10_multiseed_evaluation.py --decoy</p>';
+    prov("provDecoy", P.per_class_multiseed_decoy, "grey: without decoy features");
+
+    const lat = (b.latency || []).filter(r => r.model === "xgb");
+    $("#tblLatency").innerHTML = table(lat, ["class_name", "intensity_bin", "intensity_mean", "sessions", "detection_rate", "latency_mean", "latency_median"], {
+      detection_rate: v => pct(v, 0), intensity_mean: v => v.toFixed(3), latency_mean: v => v.toFixed(1), latency_median: v => v.toFixed(0),
+    }) + (lat.length ? `<p class="cap" style="margin-top:8px">Pre-onset false-alarm rate (per block): ${pct(lat[0].pre_attack_false_alarm_mean, 1)} &plusmn; ${pct(lat[0].pre_attack_false_alarm_std, 1)}</p>` : "");
+    prov("provLatency", P.latency);
+
+    const rel = b.reliability || [];
+    if (rel.length) {
+      const bins = [...new Set(rel.map(r => r.bin_low))].sort((x, y) => x - y);
+      const ser = Object.keys(MODEL_LABEL).filter(mo => rel.some(r => r.model === mo)).map((mo, i) => ({
+        name: MODEL_LABEL[mo], color: ["#0d9488", "#7c3aed", "#d97706"][i],
+        data: bins.map(bl => { const g = rel.filter(r => r.model === mo && r.bin_low === bl); return g.length ? g.reduce((a, r) => a + r.observed_frequency, 0) / g.length : null; }),
+      }));
+      ser.push({ name: "perfect calibration", color: "#cbd5e1", data: bins.map(bl => bl + 0.05) });
+      Charts.line($("#chRel"), { xs: bins.map(bl => (bl * 100).toFixed(0) + "%"), yMax: 1, fmtY: v => (v * 100).toFixed(0) + "%", series: ser });
+    }
+    prov("provRel", P.reliability, "x: predicted P(attack) bin; y: observed attack frequency");
+
+    const held = (b.heldout || []).filter(r => /^(xgb|rf|svm)_(accuracy|macro_f1|binary_fnr|binary_fpr)$/.test(r[Object.keys(r)[0]]));
+    $("#tblHeld").innerHTML = table(held.map(r => {
+      const key = r[Object.keys(r)[0]];
+      const [mo, ...rest] = key.split("_");
+      return { model: MODEL_LABEL[mo], metric: rest.join("_"), mean: r.mean, ci: r };
+    }), ["model", "metric", "mean", "ci"], { mean: v => v.toFixed(3), ci: r => `${r.ci95_low.toFixed(3)}&ndash;${r.ci95_high.toFixed(3)}` });
+    prov("provHeld", P.heldout, "unseen attack intensities and 80&ndash;110 km fibre");
 
     if (b.multiseed) {
-      Charts.dots($("#chSeeds"), {
-        values: b.multiseed.map(r => r.accuracy),
-        labels: b.multiseed.map(r => r.seed),
-      });
+      Charts.dots($("#chSeeds"), { values: b.multiseed.map(r => r.accuracy), labels: b.multiseed.map(r => r.seed) });
     }
-
-    const table = (rows, hi) => {
-      if (!rows || !rows.length) return '<p class="muted">Generating benchmarks...</p>';
-      const cols = Object.keys(rows[0]);
-      return `<table><thead><tr>${cols.map(c => `<th>${esc(c.replace(/_/g, " "))}</th>`).join("")}</tr></thead>
-        <tbody>${rows.map(r => `<tr>${cols.map(c => {
-          let v = r[c];
-          if (typeof v === "number") v = Math.abs(v) < 1 && v !== 0 ? v.toFixed(4) : v.toFixed(3);
-          return `<td${hi && hi(c, r) ? ' class="hi"' : ""}>${esc(v)}</td>`;
-        }).join("")}</tr>`).join("")}</tbody></table>`;
-    };
-    $("#tblOverall").innerHTML = table(b.overall);
-    $("#tblPerClass").innerHTML = table(b.per_class, c => c === "f1_score");
-
+    prov("provSeeds", P.multiseed);
     if (b.ablation) {
       const rows = [...b.ablation].sort((x, y) => y.accuracy_drop_pct - x.accuracy_drop_pct);
       Charts.hbars($("#chAbl"), {
         labelW: 158,
-        items: rows.map(r => ({
-          label: r.display_name, value: r.accuracy_drop_pct,
-          color: r.accuracy_drop_pct > 3 ? "#dc2626" : "#0d9488",
-        })),
-        fmt: v => "-" + v.toFixed(2) + "%",
+        items: rows.map(r => ({ label: r.display_name, value: r.accuracy_drop_pct, color: r.accuracy_drop_pct > 3 ? "#dc2626" : "#0d9488" })),
+        fmt: v => "-" + v.toFixed(2) + " pts",
       });
     }
+    prov("provAbl", P.ablation, "single seed; no confidence interval");
+  }
+
+  // ---------------------------------------------------------------- channel
+  async function loadChannel() {
+    S.chan = await api("/api/channel");
+    const c = S.chan.calibrated || [];
+    const draw = (metric, el) => {
+      const rows = c.filter(r => r.metric === metric && MODEL_LABEL[r.model]);
+      if (!rows.length) { $(el).innerHTML = '<p class="muted">Run scripts/10_multiseed_evaluation.py</p>'; return; }
+      Charts.hbars($(el), {
+        labelW: 200, max: 1,
+        items: rows.map(r => ({ label: `${MODEL_LABEL[r.model]} · ${r.channel === "fiber" ? "fibre" : "free space"}`,
+          value: r.mean, lo: r.ci95_low, hi: r.ci95_high, color: r.channel === "fiber" ? "#0d9488" : "#d97706" })),
+        fmt: v => pct(v, 1),
+      });
+    };
+    draw("binary_fpr", "#chChFpr"); draw("macro_f1", "#chChF1");
+    $("#tblChannel").innerHTML = table(c.map(r => ({ model: MODEL_LABEL[r.model] || r.model, channel: r.channel, metric: r.metric, mean: r.mean, ci: r })),
+      ["model", "channel", "metric", "mean", "ci"], { mean: v => v.toFixed(3), ci: r => `${r.ci95_low.toFixed(3)}&ndash;${r.ci95_high.toFixed(3)}` });
+    prov("provChannel", S.chan.provenance.calibrated, "whiskers: 95% CI over seeds");
+    $("#tblChannelLegacy").innerHTML = table(S.chan.legacy, ["model", "fiber_f1", "fso_f1", "fiber_fpr", "fso_fpr", "f1_drop"]);
+    prov("provChannelLegacy", S.chan.provenance.legacy, "no seeds repeated; no confidence interval");
+  }
+
+  // ---------------------------------------------------------------- data
+  async function loadData() {
+    S.data = await api("/api/data");
+    const d = S.data, P = d.provenance || {};
+    const card = (name, m) => m ? `<div class="stat"><div class="bar"></div><div class="k">${esc(name.replace(/_/g, " "))}</div>
+      <div class="v" style="font-size:1.3rem">${(m.rows || 0).toLocaleString()} rows</div>
+      <div class="s">${m.sessions} sessions · seed ${m.seed} · config ${esc(m.config_hash)}<br>commit ${esc(String(m.git_commit).slice(0, 10))} · ${esc(m.generated_utc)}</div></div>` : "";
+    $("#dataCards").innerHTML = Object.entries(d.sidecars || {}).map(([k, m]) => card(k, m)).join("") || '<p class="muted">Run scripts/06_generate_multiattack_dataset.py</p>';
+    prov("provSidecars", P.sidecars);
+
+    const tr = (d.sidecars || {}).train_multiattack;
+    if (tr && tr.block_class_counts) {
+      Charts.hbars($("#chBalance"), { labelW: 130,
+        items: Object.entries(tr.block_class_counts).map(([k, v]) => ({ label: d.class_names[+k], value: v, color: S.meta.class_colors[+k] })),
+        fmt: v => Math.round(v).toLocaleString() });
+    }
+    prov("provBalance", P.sidecars, "train split; class 0 includes pre-onset windows of attacked sessions");
+    if (d.sessions && d.sessions.distance_km) {
+      const bins = d.sessions.distance_bins;
+      Charts.line($("#chDist"), { xs: bins.slice(0, -1).map((b0, i) => `${b0}-${bins[i + 1]}`), fmtY: v => v.toFixed(0),
+        series: Object.entries(d.sessions.distance_km).map(([sp, h], i) => ({ name: sp, color: ["#94a3b8", "#0d9488", "#d97706"][i % 3], data: h })) });
+    }
+    const leak = (d.dataset_leakage || {}).classes || {};
+    $("#tblLeak").innerHTML = table(Object.entries(leak).filter(([, v]) => typeof v === "object").map(([k, v]) => ({
+      class: d.class_names[+k], best_auc: v.best_auc, feature: `<code>${esc(v.feature)}</code>`,
+      flag: v.flagged ? `<span style="color:var(--crimson-text);font-weight:600">flagged (&gt; 0.95)</span>` : "ok" })),
+      ["class", "best_auc", "feature", "flag"], { best_auc: v => v.toFixed(3) });
+    const ms = d.multiseed_leakage && d.multiseed_leakage.per_seed;
+    prov("provLeak", P.dataset_leakage, ms ? `multi-seed max AUC: ${Object.values(ms).map(a => a.max_auc.toFixed(3)).join(", ")}` : "");
+
+    const c = S.meta.controls || {};
+    const rows = [
+      { parameter: "Fibre distance, training (km)", range: (c.fiber_distance_km || []).join(" – ") },
+      { parameter: "Fibre distance, held-out (km)", range: (c.heldout_distance_km || []).join(" – ") },
+      { parameter: "Detector types", range: (c.detector_types || []).join(", ") },
+      ...Object.entries(c.attack_intensity || {}).map(([k, v]) => ({ parameter: `${S.meta.class_names[+k]} intensity, training / held-out`,
+        range: `${v.join(" – ")}  /  ${(c.attack_heldout_intensity || {})[k].join(" – ")}` })),
+    ];
+    $("#tblRanges").innerHTML = table(rows, ["parameter", "range"]) + '<p class="cap" style="margin-top:8px">Full list with sources: config/physics.yaml.</p>';
+
+    const rc = (d.real_calibration || []).filter(r => !r.noise_injected);
+    if (rc.length) {
+      const srcs = [...new Set(rc.map(r => r.source))];
+      const losses = [...new Set(rc.map(r => r.total_loss_db))].sort((a, b) => a - b);
+      const ser = srcs.map((sname, i) => ({ name: "real: " + sname.replace("baseline_no_signal_", "").replace("_full_sweep.csv", ""),
+        color: ["#be185d", "#7c3aed"][i % 2], data: losses.map(L => { const r = rc.find(x => x.source === sname && x.total_loss_db === L); return r ? r.mean_qber : null; }) }));
+      ser.push({ name: "simulated SPAD (same loss)", color: "#0d9488", data: losses.map(L => { const r = rc.find(x => x.total_loss_db === L); return r ? r.sim_qber_ingaas_spad : null; }) });
+      ser.push({ name: "simulated SNSPD (same loss)", color: "#94a3b8", data: losses.map(L => { const r = rc.find(x => x.total_loss_db === L); return r ? r.sim_qber_snspd : null; }) });
+      Charts.line($("#chReal"), { xs: losses.map(L => L + " dB"), fmtY: v => (v * 100).toFixed(1) + "%", series: ser });
+    } else $("#chReal").innerHTML = '<p class="muted">Run scripts/12_real_data_evaluation.py</p>';
+    const ood = d.real_ood;
+    $("#realOod").innerHTML = ood && ood.real_blocks != null
+      ? `<div class="banner warn"><span class="em">${ICONS.warn}</span><div><b>Out-of-distribution test on real benign telemetry.</b>
+         The simulation-trained model flagged ${pct(ood.false_alarm_rate, 0)} of ${ood.real_blocks} real blocks as attacks (fixed 11% threshold: ${pct(ood.fixed11_false_alarm_rate, 0)}).
+         The real system's baseline QBER is higher than the simulator's, so the model does not transfer without recalibration.</div></div>` : "";
+    prov("provReal", P.real);
+  }
+
+  function renderOverview() {
+    const h = S.meta.headline || {};
+    if (h.accuracy) {
+      $("#ovAcc").textContent = pct(h.accuracy.mean, 1);
+      $("#ovAccSub").innerHTML = `95% CI ${pct(h.accuracy.ci95_low, 1)}&ndash;${pct(h.accuracy.ci95_high, 1)}, ${h.accuracy.n_seeds} seeds, session split`;
+    }
+    if (h.xgb_binary_fnr) {
+      $("#ovFnr").textContent = pct(h.xgb_binary_fnr.mean, 1);
+      $("#ovFnrSub").textContent = h.fixed11_binary_fnr ? `fixed 11% threshold misses ${pct(h.fixed11_binary_fnr.mean, 1)}` : "";
+      $("#ovPerf").innerHTML = `<b>Model vs static baseline (simulated, multi-seed).</b> Attack-vs-normal, the fixed 11% threshold misses ${h.fixed11_binary_fnr ? pct(h.fixed11_binary_fnr.mean, 1) : "&mdash;"} of attacked windows; XGBoost misses ${pct(h.xgb_binary_fnr.mean, 1)} at a ${h.xgb_binary_fpr ? pct(h.xgb_binary_fpr.mean, 1) : "&mdash;"} false-alarm rate. Most of the remaining misses are the three attacks that leave QBER unchanged by design.`;
+    }
+    prov("provOverview", S.meta.headline_provenance);
   }
 
   // ---------------------------------------------------------------- atlas
@@ -648,10 +1008,12 @@
       <div class="body"><div class="chips">${f.map(x => `<span class="chip">${esc(x)}</span>`).join("")}</div></div>
       </details>`).join("");
 
-    const nr = S.meta.nuisance_ranges;
-    $("#tblNuisance").innerHTML = `<table><thead><tr><th>Physical Parameter</th><th>Lower Bound</th><th>Upper Bound</th></tr></thead>
-      <tbody>${Object.entries(nr).map(([k, v]) =>
-        `<tr><td><code>${esc(k)}</code></td><td>${v[0]}</td><td>${v[1]}</td></tr>`).join("")}</tbody></table>`;
+    const c = S.meta.controls || {};
+    $("#tblNuisance").innerHTML = `<table><thead><tr><th>Parameter</th><th>Range (all classes)</th></tr></thead><tbody>
+      <tr><td>Fibre distance (training)</td><td>${(c.fiber_distance_km || []).join(" – ")} km</td></tr>
+      <tr><td>Detector</td><td>${(c.detector_types || []).join(", ")}</td></tr>
+      <tr><td colspan="2" class="muted">Efficiencies, dark counts, misalignment, drift and loss steps: see config/physics.yaml.</td></tr>
+      </tbody></table>`;
   }
 
   function drawAtlasBody() {

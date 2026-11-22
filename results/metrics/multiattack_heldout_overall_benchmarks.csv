@@ -1,0 +1,2 @@
+model,split,accuracy,macro_f1,macro_precision,macro_recall,false_negative_rate
+XGBoost multi-attack,heldout,0.40096181046676094,0.28830044205167393,0.33545508979088823,0.3412827867333704,0.38995555555555556
