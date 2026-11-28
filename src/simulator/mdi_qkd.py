@@ -208,11 +208,11 @@ def bb84_blinding_attack(p_control: float, blinding_residual_qber: float = 0.005
                          ) -> Dict[str, float]:
     """Detector blinding against BB84: Eve owns Bob's detectors.
 
-    Eve intercepts, measures in Bob's basis (she learns it from the public
-    announcement in a faked-state attack), and injects a bright classical pulse
-    that forces exactly the outcome she wants. She therefore learns the key bit
-    on every controlled pulse, and the only error she leaves is her own
-    state-preparation imperfection.
+    ANALYTIC ILLUSTRATION: Eve measures in her randomly selected basis and
+    uses basis-selective bright triggers. Retained controlled detections are
+    assumed to match her basis. No advance access to Bob's announced basis is
+    assumed. Information fractions and residual errors here are stipulated,
+    not derived from a complete attack implementation or security proof.
 
     The decisive point: in BB84 the X ("check") basis is measured by the SAME
     detectors Eve controls, so she fakes the security monitor too. There is no
@@ -231,9 +231,9 @@ def bb84_blinding_attack(p_control: float, blinding_residual_qber: float = 0.005
 def mdi_charlie_attack(p_control: float, e_z_honest: float = 0.005,
                        e_x_honest: float = 0.030, abort_threshold: float = 0.11
                        ) -> Dict[str, float]:
-    """Eve owns Charlie entirely in MDI-QKD and tries the same trick.
+    """ANALYTIC ILLUSTRATION of a particular Z-measure/resend relay attack.
 
-    Her best strategy for learning Z-basis key bits is to measure both incoming
+    The stipulated strategy for learning Z-basis key bits is to measure both incoming
     pulses in Z, then announce |psi-> only on the events where she saw opposite
     bits. That costs her nothing in the Z basis -- the announced events really do
     carry anticorrelated bits, so E_Z stays clean and she knows every bit.

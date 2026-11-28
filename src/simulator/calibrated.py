@@ -240,6 +240,10 @@ class CalibratedBB84Simulator:
         f = sp.intensity
         for b in range(2):
             e0, e1 = eta[b]
+            signal_lam = sp.intensities[0] * t
+            signal_d0, _ = coherent_clicks(signal_lam*e0*(1-ed),signal_lam*e1*ed,pd,pd)
+            signal_d1, _ = coherent_clicks(signal_lam*e1*(1-ed),signal_lam*e0*ed,pd,pd)
+            signal_gain = .5*(signal_d0+signal_d1)
             for k, mu in enumerate(sp.intensities):
                 lam = mu * t
                 # ----- honest population -----
@@ -254,7 +258,7 @@ class CalibratedBB84Simulator:
                 elif attack == "pns":
                     d, e, dx, inf = self._pns(sp, mu, t, ed, e0, e1, pd, hon_d, hon_e, hon_x, f, b)
                 elif attack == "detector_blinding":
-                    d, e, dx, inf = self._blinding(sp, mu, pd, hon_d, hon_e, hon_x, f, b)
+                    d, e, dx, inf = self._blinding(sp, mu, pd, hon_d, hon_e, hon_x, f, b, signal_gain)
                 elif attack == "time_shift":
                     # Simplified: two-level detector efficiency vs arrival time; Eve shifts
                     # early or late at random and never measures the photon.
@@ -372,17 +376,19 @@ class CalibratedBB84Simulator:
         info = f * multi / max(d, 1e-15)
         return (1 - f) * hon_d + f * d, (1 - f) * hon_e + f * e, (1 - f) * hon_x + f * dx, info
 
-    def _blinding(self, sp, mu, pd, hon_d, hon_e, hon_x, f, b):
+    def _blinding(self, sp, mu, pd, hon_d, hon_e, hon_x, f, b, signal_gain):
         """Blinding + faked states: Bob clicks only when his basis equals Eve's.
 
         Simplifications: blinding is perfect while active (no dark counts, no
         afterpulses), there is no photocurrent or temperature telemetry, and the trigger
-        click probability is tuned to Bob's honest gain with a relative error.
+        click probability is tuned to Bob's SIGNAL gain with a relative error.
+        The same trigger efficiency applies to signal, decoy and vacuum pulses;
+        Eve is not given the unannounced intensity choice.
         """
         eps = sp.attack_params["residual_qber"]
         p_eve = 1.0 - np.exp(-mu)
         sig = sp.intensities[0]
-        xi = np.clip(hon_d / max(0.5 * (1.0 - np.exp(-sig)), 1e-12), 0.0, 1.0) * (1.0 + sp.attack_params["gain_mismatch"])
+        xi = np.clip(signal_gain / max(0.5 * (1.0 - np.exp(-sig)), 1e-12), 0.0, 1.0) * (1.0 + sp.attack_params["gain_mismatch"])
         xi = float(np.clip(xi, 0.0, 1.0))
         d = p_eve * 0.5 * xi                      # blinded detectors: no dark counts
         e = d * eps

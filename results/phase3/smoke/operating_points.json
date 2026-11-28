@@ -1,0 +1,134 @@
+{
+  "1_minimal": {
+    "thresholds": {
+      "limits": 1.1644390402955727,
+      "ewma": 19.69762486412146,
+      "cusum": 189.06146006700087,
+      "anomaly": 0.41632503961349243,
+      "classifier": 0.7183434411006817,
+      "combined": 0.7183434411006817
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 0.625,
+        "missed_events": 3,
+        "detected_latency_mean_s": 36.2488153741178
+      },
+      "ewma": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 0.75,
+        "missed_events": 2,
+        "detected_latency_mean_s": 34.71803607592637
+      },
+      "cusum": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 41.044984321404925
+      },
+      "anomaly": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 23.54498432140493
+      },
+      "classifier": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 35.544984321404925
+      },
+      "combined": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 35.544984321404925
+      }
+    }
+  },
+  "1_instrumented": {
+    "thresholds": {
+      "limits": 1.0690277626025257,
+      "ewma": 17.234776197557323,
+      "cusum": 169.77021111554672,
+      "anomaly": 0.6053702690313475,
+      "classifier": 0.31708604097366333,
+      "combined": 0.7296936739893525
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 0.75,
+        "missed_events": 2,
+        "detected_latency_mean_s": 36.87831765473826
+      },
+      "ewma": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 0.875,
+        "missed_events": 1,
+        "detected_latency_mean_s": 36.0477207876284
+      },
+      "cusum": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 36.544984321404925
+      },
+      "anomaly": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 0.25,
+        "missed_events": 6,
+        "detected_latency_mean_s": 27.06413958496927
+      },
+      "classifier": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 23.54498432140493
+      },
+      "combined": {
+        "benign_hours": 0.07777777777777778,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 8,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 28.04498432140493
+      }
+    }
+  }
+}

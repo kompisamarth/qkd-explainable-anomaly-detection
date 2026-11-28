@@ -1,0 +1,188 @@
+{
+  "tag": "smoke",
+  "seeds": [
+    1
+  ],
+  "config": {
+    "version": 1,
+    "dt_s": 2.0,
+    "samples": 100,
+    "windows_s": [
+      10,
+      20,
+      40
+    ],
+    "source": {
+      "nominal_mu": 0.5,
+      "isolation_db": [
+        35,
+        50
+      ],
+      "reflection": 0.02,
+      "watchdog_tap": 0.001,
+      "sensor_spectral_width_nm": 180,
+      "photo_growth_per_nw_s": 0.001,
+      "photo_recovery_s": 600,
+      "seeding_response_s": 8,
+      "seeding_scale_nw": 30,
+      "damage_threshold_nw": [
+        20000,
+        80000
+      ],
+      "damage_rate_db_s": 0.04,
+      "controller_response_s": 30
+    },
+    "sensors": {
+      "watchdog_power": [
+        "nW",
+        0.2,
+        0,
+        100,
+        2,
+        2
+      ],
+      "emitted_intensity": [
+        "photons_per_pulse",
+        0.006,
+        0,
+        2,
+        2,
+        2
+      ],
+      "temperature": [
+        "degC",
+        0.03,
+        -20,
+        80,
+        2,
+        5
+      ],
+      "modulator_bias_v": [
+        "V",
+        0.008,
+        -5,
+        5,
+        2,
+        2
+      ],
+      "isolation_db": [
+        "dB",
+        0.6,
+        0,
+        70,
+        30,
+        10
+      ],
+      "extinction_ratio_db": [
+        "dB",
+        0.3,
+        0,
+        40,
+        10,
+        5
+      ],
+      "smsr_db": [
+        "dB",
+        0.5,
+        0,
+        60,
+        10,
+        5
+      ],
+      "rin": [
+        "relative_variance_1kHz_to_1MHz",
+        0.0002,
+        0,
+        0.1,
+        10,
+        5
+      ],
+      "wavelength_shift_pm": [
+        "pm",
+        0.8,
+        -100,
+        100,
+        10,
+        5
+      ]
+    },
+    "missing_probability": 0.015,
+    "engineering_limits": {
+      "watchdog_power": [
+        0,
+        15
+      ],
+      "emitted_intensity": [
+        0.35,
+        0.7
+      ],
+      "temperature": [
+        18,
+        32
+      ],
+      "modulator_bias_v": [
+        -0.7,
+        0.7
+      ],
+      "isolation_db": [
+        30,
+        70
+      ],
+      "extinction_ratio_db": [
+        18,
+        40
+      ],
+      "smsr_db": [
+        25,
+        60
+      ],
+      "rin": [
+        0,
+        0.012
+      ],
+      "wavelength_shift_pm": [
+        -30,
+        30
+      ]
+    },
+    "monitor": {
+      "persistence": 3,
+      "clear_samples": 5,
+      "false_alarm_budget_per_hour": 1.0,
+      "model_estimators": 20
+    }
+  },
+  "device_partitions": {
+    "train": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "validation": [
+      100,
+      101
+    ],
+    "test": [
+      200,
+      201
+    ]
+  },
+  "config_hash": "f3ca51041dd81569fc93b4575a04f50c4bd1f37ea547b7a06d49e8080c52a8d2",
+  "git_commit": "975aa60d2a44b5ec72747ee550809dc05faea18b",
+  "seconds": 23.078598499298096,
+  "provenance": "SIMULATED DATA; phenomenological assumptions; no hardware validation",
+  "versions": {
+    "numpy": "2.4.4",
+    "pandas": "3.0.2",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.4.1",
+    "shap": "0.51.0"
+  },
+  "command": "scripts/13_source_side_pipeline.py --quick",
+  "rng": "SeedSequence([seed,device,session,stream]); independent streams",
+  "model_files": [
+    "monitor_instrumented_1.joblib",
+    "monitor_minimal_1.joblib"
+  ]
+}

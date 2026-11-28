@@ -55,3 +55,12 @@ data/processed/*.meta.json
 data/processed/smoke/
 results/metrics/*_smoke.*
 results/figures/*_smoke.png
+/data/processed/phase3/
+/.venv-phase3/
+/.python/
+/.uv-cache/
+/results/phase3/runs/*/data/
+# Local runs are opt-in review artifacts; failed/incomplete runs never publish.
+/results/phase3/runs/
+/results/phase3/active.json
+/results/phase3/verification-*.txt

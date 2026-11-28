@@ -85,6 +85,7 @@ def detection_latency(df: pd.DataFrame, alarm: np.ndarray, correct_class: np.nda
     """
     d = df[["session_id", "block_index", "attack_start_block", "session_attack_class", "session_p_eve"]].copy()
     d["alarm"] = np.asarray(alarm, dtype=bool)
+    d["any_alarm"] = d["alarm"]
     if correct_class is not None:
         d["alarm"] &= np.asarray(correct_class, dtype=bool)
     rows = []
@@ -96,9 +97,9 @@ def detection_latency(df: pd.DataFrame, alarm: np.ndarray, correct_class: np.nda
         n_post = int((g["block_index"] >= onset).sum())
         rows.append({
             "session_id": sid, "class_id": cls, "intensity": float(g["session_p_eve"].iloc[0]),
-            "pre_attack_false_alarm_rate": float(pre["alarm"].mean()) if len(pre) else np.nan,
+            "pre_attack_false_alarm_rate": float(pre["any_alarm"].mean()) if len(pre) else np.nan,
             "detected": bool(len(post)) if cls > 0 else np.nan,
             "latency_blocks": float(post["block_index"].min() - onset) if (cls > 0 and len(post)) else
-            (float(n_post) if cls > 0 else np.nan),
+            np.nan,
         })
     return pd.DataFrame(rows)

@@ -1,0 +1,662 @@
+{
+  "42_minimal": {
+    "thresholds": {
+      "limits": 1.5897325033304714,
+      "ewma": 7.022645092699943,
+      "cusum": 54.51756908704747,
+      "anomaly": 0.6523024542984853,
+      "classifier": 0.9103937745094299,
+      "combined": 0.9103937745094299
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5,
+        "missed_events": 8,
+        "detected_latency_mean_s": 28.454154049723805
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.625,
+        "missed_events": 6,
+        "detected_latency_mean_s": 31.16106976789947
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.75,
+        "missed_events": 4,
+        "detected_latency_mean_s": 39.18452584532982
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.125,
+        "missed_events": 14,
+        "detected_latency_mean_s": 189.13659715400632
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 18.129332727301126
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 18.129332727301126
+      }
+    }
+  },
+  "42_instrumented": {
+    "thresholds": {
+      "limits": 1.5270949463928811,
+      "ewma": 7.252660565129682,
+      "cusum": 53.18959220243336,
+      "anomaly": 0.5846544650688853,
+      "classifier": 0.9583402872085571,
+      "combined": 0.9583402872085571
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5,
+        "missed_events": 8,
+        "detected_latency_mean_s": 28.454154049723805
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.625,
+        "missed_events": 6,
+        "detected_latency_mean_s": 44.43245188020772
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 42.129332727301126
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.25,
+        "missed_events": 12,
+        "detected_latency_mean_s": 68.76303866290577
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 21.82164041960882
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 21.82164041960882
+      }
+    }
+  },
+  "43_minimal": {
+    "thresholds": {
+      "limits": 0.0,
+      "ewma": 3.0036372054009344,
+      "cusum": 16.293375591765532,
+      "anomaly": 0.5998676317147182,
+      "classifier": 0.8252365589141846,
+      "combined": 0.8252365589141846
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.625,
+        "missed_events": 6,
+        "detected_latency_mean_s": 44.77179412157648
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 62.56399646510249
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.9375,
+        "missed_events": 1,
+        "detected_latency_mean_s": 49.01741782548816
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5625,
+        "missed_events": 7,
+        "detected_latency_mean_s": 73.16886138467379
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 19.849710750816776
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 19.849710750816776
+      }
+    }
+  },
+  "43_instrumented": {
+    "thresholds": {
+      "limits": 0.0,
+      "ewma": 3.4674226143680573,
+      "cusum": 74.00276506519182,
+      "anomaly": 0.5343454233181429,
+      "classifier": 0.921985924243927,
+      "combined": 0.921985924243927
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.625,
+        "missed_events": 6,
+        "detected_latency_mean_s": 43.77179412157648
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 50.81387648473292
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 64.42113932224535
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5,
+        "missed_events": 8,
+        "detected_latency_mean_s": 30.644304448897056
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 22.706853607959633
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 22.706853607959633
+      }
+    }
+  },
+  "44_minimal": {
+    "thresholds": {
+      "limits": 0.6545816442458627,
+      "ewma": 4.695922656531721,
+      "cusum": 32.934186050386245,
+      "anomaly": 0.6126869008304479,
+      "classifier": 0.7066940665245056,
+      "combined": 0.7066940665245056
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.625,
+        "missed_events": 6,
+        "detected_latency_mean_s": 25.69194509554344
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 30.881057602628825
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.9375,
+        "missed_events": 1,
+        "detected_latency_mean_s": 33.0634487080797
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5,
+        "missed_events": 8,
+        "detected_latency_mean_s": 106.13481802210711
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 13.603838870342294
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 1.0,
+        "missed_events": 0,
+        "detected_latency_mean_s": 13.603838870342294
+      }
+    }
+  },
+  "44_instrumented": {
+    "thresholds": {
+      "limits": 0.7109743172369398,
+      "ewma": 5.018956774881095,
+      "cusum": 34.25897398511175,
+      "anomaly": 0.5583634716699524,
+      "classifier": 0.9405600428581238,
+      "combined": 0.9405600428581238
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5625,
+        "missed_events": 7,
+        "detected_latency_mean_s": 5.420915053459806
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 29.452486174057395
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.9375,
+        "missed_events": 1,
+        "detected_latency_mean_s": 30.39678204141303
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5,
+        "missed_events": 8,
+        "detected_latency_mean_s": 49.17739306385813
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 14.59534331691454
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 14.59534331691454
+      }
+    }
+  },
+  "45_minimal": {
+    "thresholds": {
+      "limits": 1.530190386576527,
+      "ewma": 7.756617352126131,
+      "cusum": 60.117198361470926,
+      "anomaly": 0.6943381886554307,
+      "classifier": 0.7475619912147522,
+      "combined": 0.7475619912147522
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5,
+        "missed_events": 8,
+        "detected_latency_mean_s": 26.494264062734267
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.625,
+        "missed_events": 6,
+        "detected_latency_mean_s": 64.54614422876594
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 71.96405575971448
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.0625,
+        "missed_events": 15,
+        "detected_latency_mean_s": 6.530730111200057
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 28.791594761832567
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 28.791594761832567
+      }
+    }
+  },
+  "45_instrumented": {
+    "thresholds": {
+      "limits": 1.5734928191117272,
+      "ewma": 8.292814762431952,
+      "cusum": 63.70171212009906,
+      "anomaly": 0.6008735362578101,
+      "classifier": 0.7510477900505066,
+      "combined": 0.7510477900505066
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5,
+        "missed_events": 8,
+        "detected_latency_mean_s": 26.244264062734267
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5625,
+        "missed_events": 7,
+        "detected_latency_mean_s": 35.48766191055939
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 71.39262718828591
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.25,
+        "missed_events": 12,
+        "detected_latency_mean_s": 40.86822614753639
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 17.276568277129563
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 17.276568277129563
+      }
+    }
+  },
+  "46_minimal": {
+    "thresholds": {
+      "limits": 1.2805831532504484,
+      "ewma": 10.013208453080313,
+      "cusum": 83.03886938689755,
+      "anomaly": 0.6395786440079994,
+      "classifier": 0.9672019481658936,
+      "combined": 0.9672019481658936
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5625,
+        "missed_events": 7,
+        "detected_latency_mean_s": 4.912480932047856
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 61.702811953445476
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.9375,
+        "missed_events": 1,
+        "detected_latency_mean_s": 51.80050396620698
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.25,
+        "missed_events": 12,
+        "detected_latency_mean_s": 135.36922831020163
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 16.179366974248904
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.875,
+        "missed_events": 2,
+        "detected_latency_mean_s": 16.179366974248904
+      }
+    }
+  },
+  "46_instrumented": {
+    "thresholds": {
+      "limits": 1.3527428922462965,
+      "ewma": 10.598266195745122,
+      "cusum": 85.67234071642328,
+      "anomaly": 0.5740573214600788,
+      "classifier": 0.8607132434844971,
+      "combined": 0.8607132434844971
+    },
+    "validation": {
+      "limits": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.5625,
+        "missed_events": 7,
+        "detected_latency_mean_s": 4.912480932047856
+      },
+      "ewma": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.8125,
+        "missed_events": 3,
+        "detected_latency_mean_s": 56.47204272267625
+      },
+      "cusum": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.9375,
+        "missed_events": 1,
+        "detected_latency_mean_s": 50.33383729954031
+      },
+      "anomaly": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.4375,
+        "missed_events": 9,
+        "detected_latency_mean_s": 127.5941579257691
+      },
+      "classifier": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.9375,
+        "missed_events": 1,
+        "detected_latency_mean_s": 11.533837299540311
+      },
+      "combined": {
+        "benign_hours": 0.6,
+        "false_alarm_events": 0,
+        "false_alarms_per_hour": 0.0,
+        "attack_events": 16,
+        "detection_rate": 0.9375,
+        "missed_events": 1,
+        "detected_latency_mean_s": 11.533837299540311
+      }
+    }
+  }
+}

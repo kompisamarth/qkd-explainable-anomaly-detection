@@ -141,11 +141,25 @@
     });
 
     $("#btnRunBlind").addEventListener("click", runBlind);
+    window.addEventListener('message',event=>{
+      const frame=document.querySelector('#v-source iframe');
+      if(event.origin===location.origin && event.source===frame?.contentWindow && event.data?.type==='qkd-source-height'){
+        frame.style.height=Math.max(800,Math.min(16000,Number(event.data.height)||800))+'px';
+      }
+    });
 
-    $("#btnReveal").addEventListener("click", () => {
+    $("#btnReveal").addEventListener("click", async () => {
+      if (!S.session) return;
+      const sid = S.session.session_id;
+      try {
+        const revealed = await api(`/api/simulate/reveal/${sid}`, {method: "POST"});
+        if (!S.session || S.session.session_id !== sid) return;
+        S.session = revealed;
+      } catch (e) { fatal(esc(e.message)); return; }
       S.revealed = true;
       $("#revealBody").style.display = "";
       $("#btnReveal").innerHTML = `${ICONS.unlock} Ground Truth Verified`;
+      renderMonitorStatic();
       drawMonitor(false);
     });
 
@@ -332,32 +346,42 @@
       `<div class="stat ${kind || ""}"><div class="bar"></div><div class="k">${k}</div>
        <div class="v">${v}</div><div class="s">${sub}</div></div>`;
 
+    if (s.blind && !S.revealed) {
+      const mean = s.qber.reduce((a,b)=>a+b,0)/s.qber.length;
+      $("#kpis").innerHTML = kpi("Observed mean QBER",pct(mean,2),"Ground truth sealed","") +
+        kpi("Transmission Efficiency",pct(m.final_efficiency,1),"Observed telemetry","");
+      $("#verdictA").textContent = "Blind test: onset-dependent metrics are available after reveal.";
+      $("#verdictB").textContent = "Predictions describe measured patterns; they do not certify link security.";
+      $("#scnPhysics").replaceChildren(); $("#revealBody").replaceChildren();
+      prov("provMon",s.provenance); drawMonitor(true); return;
+    }
+
     $("#kpis").innerHTML =
       kpi("Mean QBER After Onset", pct(m.mean_qber_post, 2), "Theoretical threshold: 11.00%",
           m.mean_qber_post > 0.11 ? "bad" : "") +
       kpi("Transmission Efficiency", pct(m.final_efficiency, 1), "Yield monitoring (PNS deficit)", "info") +
       kpi("Basis Asymmetry |Qz - Qx|", pct(m.final_asymmetry, 2), "Dual-basis differential", "warn") +
       (m.delta_t == null
-        ? kpi("Detection Latency", "Nominal", "Zero attack flags raised", s.class_id === 0 ? "good" : "bad")
+        ? kpi("Detection Latency", s.class_id === 0 ? "N/A" : "Missed", "No post-onset alarm; latency undefined", s.class_id === 0 ? "good" : "bad")
         : kpi("Detection Latency ΔT", m.delta_t + " blk", "First alarm at block " + m.first_alarm, "bad"));
 
     $("#verdictA").innerHTML = m.threshold_fires
       ? `<div class="banner bad"><span class="em">${ICONS.alert}</span><div><b>Classical 11% Static Threshold: ABORT TRIGGERED.</b>
          QBER exceeded 11.0% limit. Sufficient signal for textbook scalar rule.</div></div>`
       : `<div class="banner warn"><span class="em">${ICONS.warn}</span><div><b>Classical 11% Static Threshold: SILENT (BYPASSED).</b>
-         QBER remained below 11.0%. A conventional BB84 system would continue sharing compromised key material.</div></div>`;
+         QBER remained below 11.0%. This scalar test alone does not establish secrecy or compromise.</div></div>`;
 
     let vb;
     if (s.class_id === 0) {
       const fp = m.false_positive_rate;
       vb = `<div class="banner ${fp < .1 ? "ok" : "bad"}"><span class="em">${fp < .1 ? ICONS.check : ICONS.warn}</span>
-        <div><b>Temporal AI Model: LINK SECURE.</b> Nominal channel confirmed. Flagged only ${pct(fp, 1)} of blocks under baseline turbulence.</div></div>`;
+        <div><b>Temporal AI Model: BENIGN TEST SCENARIO.</b> Ground truth is benign; this does not certify operational security. Flagged only ${pct(fp, 1)} of blocks under baseline turbulence.</div></div>`;
     } else if (m.delta_t != null) {
-      vb = `<div class="banner ok"><span class="em">${ICONS.check}</span><div><b>Temporal AI Model: BREACH DETECTED.</b>
+      vb = `<div class="banner ok"><span class="em">${ICONS.check}</span><div><b>Temporal AI Model: ATTACK ALARM.</b>
         Flagged within ${m.delta_t} blocks. Maintained consistent attribution across ${pct(m.post_accuracy, 0)} of post-onset blocks.</div></div>`;
     } else {
-      vb = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div><b>Temporal AI Model: DETECTION DELAYED.</b>
-        Adversary power near noise floor; initial sliding window did not accumulate sufficient anomaly energy.</div></div>`;
+      vb = `<div class="banner bad"><span class="em">${ICONS.alert}</span><div><b>Temporal AI Model: EXPOSURE MISSED.</b>
+        No non-normal prediction occurred after onset in this observed session.</div></div>`;
     }
     if (s.p_eve > 0 && s.p_eve < 0.12 && s.class_id !== 0) {
       vb += `<div class="banner info" style="margin-top:9px"><span class="em">${ICONS.info}</span><div>
@@ -389,7 +413,7 @@
         <div class="stat ${isCorrect ? "good" : "bad"}"><div class="bar"></div>
           <div class="k">AI Classifier Verdict</div>
           <div class="v" style="font-size:1.25rem;">${isCorrect ? "TRUE POSITIVE" : "MISCLASSIFIED"}</div>
-          <div class="s">${isCorrect ? `Correctly attributed in ${m.delta_t ?? 0} blocks` : `Classified as ${S.meta.class_names[majPred]}`}</div>
+          <div class="s">${isCorrect ? `Correct-class latency: ${m.correct_class_latency == null ? "not detected" : m.correct_class_latency + " blocks"}` : `Classified as ${S.meta.class_names[majPred]}`}</div>
         </div>
         <div class="stat ${m.threshold_fires ? "warn" : "bad"}"><div class="bar"></div>
           <div class="k">Classical 11% Rule</div>
@@ -467,7 +491,7 @@
     const th = $("#threatHud");
     if (pred === 0 || conf < 0.50) {
       th.className = "threat-hud secure";
-      $("#threatStatus").textContent = "LINK SECURE — DISTILLATION ACTIVE";
+      $("#threatStatus").textContent = "NO CLASSIFIER ALARM — SECURITY NOT CERTIFIED";
       $("#threatSub").textContent = `Confidence ${pct(conf, 1)} · Nominal channel dynamics`;
     } else if (conf < 0.70) {
       th.className = "threat-hud warn";
@@ -476,7 +500,7 @@
     } else {
       th.className = "threat-hud breach";
       $("#threatStatus").textContent = `BREACH DETECTED — ${S.meta.class_names[pred].toUpperCase()} IDENTIFIED`;
-      $("#threatSub").textContent = `Confidence ${pct(conf, 1)} · Autonomous key abort triggered`;
+      $("#threatSub").textContent = `Confidence ${pct(conf, 1)} · Simulated classifier warning; no real key control`;
     }
 
     $("#scrubLbl").textContent = `block ${s.blocks[S.idx]} / ${s.blocks[s.blocks.length - 1]}`;
@@ -753,7 +777,7 @@
     $("#mdiMDI").innerHTML =
       `<div class="grid" style="gap:10px">
         ${tile("Z-Basis Sifted Error", pct(r.mdi_qber, 2), "Kept low by adversary pulses", "")}
-        ${tile("X-Basis Bell Phase Error", pct(r.mdi_check_error, 1), "Cannot be forged by untrusted relay",
+        ${tile("X-Basis Bell Phase Error", pct(r.mdi_check_error, 1), "Stipulated X-error mixture; analytic illustration",
                r.mdi_aborts ? "bad" : "good")}
       </div>` + (r.mdi_aborts
         ? `<div class="banner ok" style="margin-top:12px"><span class="em">${ICONS.check}</span><div><b>Protocol Aborted.</b>

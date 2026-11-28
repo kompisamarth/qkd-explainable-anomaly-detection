@@ -1,0 +1,50 @@
+[
+  {
+    "feature": "watchdog_power__value",
+    "contribution": 0.5060900449752808
+  },
+  {
+    "feature": "modulator_bias_v__mean_30",
+    "contribution": -0.3057112991809845
+  },
+  {
+    "feature": "watchdog_power__mean_10",
+    "contribution": 0.2857861816883087
+  },
+  {
+    "feature": "modulator_bias_v__value",
+    "contribution": 0.215766042470932
+  },
+  {
+    "feature": "watchdog_power__mean_30",
+    "contribution": 0.1509803831577301
+  },
+  {
+    "feature": "bias_temperature_residual",
+    "contribution": 0.1198815181851387
+  },
+  {
+    "feature": "watchdog_power__mean_60",
+    "contribution": 0.1189151331782341
+  },
+  {
+    "feature": "temperature__mean_60",
+    "contribution": -0.10380759835243225
+  },
+  {
+    "feature": "modulator_bias_v__mean_60",
+    "contribution": 0.08231141418218613
+  },
+  {
+    "feature": "modulator_bias_v__std_60",
+    "contribution": -0.038128577172756195
+  },
+  {
+    "feature": "watchdog_power__std_60",
+    "contribution": -0.027572037652134895
+  },
+  {
+    "feature": "watchdog_power__slope_60",
+    "contribution": 0.025096816942095757
+  }
+]

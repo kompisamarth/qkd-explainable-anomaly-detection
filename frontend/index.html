@@ -29,6 +29,7 @@
   </header>
 
   <nav class="tabs" id="tabs">
+    <button class="tab" data-v="source">Source Monitor</button>
     <button class="tab active" data-v="overview">
       <span class="tab-icon">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -123,7 +124,7 @@
       <div class="grid stagger" style="gap:16px">
         <div class="panel">
           <h3>The Architectural Vulnerability of Static QBER Thresholds</h3>
-          <p class="lead">Textbook BB84 decides channel security by checking whether scalar <b>Quantum Bit Error Rate (QBER)</b> crosses the theoretical Shor-Preskill abort limit of <b>11.0%</b>.</p>
+          <p class="lead">This simplified baseline checks whether scalar <b>Quantum Bit Error Rate (QBER)</b> crosses the theoretical Shor-Preskill abort limit of <b>11.0%</b>.</p>
           <p class="muted">This scalar criterion leaves critical physical vulnerabilities unmonitored. An eavesdropper executing fractional intercept-resend raises QBER to only 5&ndash;8%, siphoning cryptographic key material without crossing 11%. Crucially, advanced attacks like <b>detector blinding actually depress QBER</b> below benign baseline levels by substituting quantum Poisson statistics with deterministic classical pulses.</p>
           <p class="muted">This autonomous security architecture monitors channel dynamics across <b>63 causal temporal features</b> (windowed error moments, jump energies, basis asymmetries, and yield ratios) to classify the channel into seven regimes (normal plus six attacks) with SHAP interpretability. Three of those attacks leave Bob's QBER statistics unchanged by design, so low recall on them is the physically correct result, not a bug.</p>
           <div class="banner info" style="margin-top:14px">
@@ -596,8 +597,8 @@
     </div>
   </section>
 
+<section class="view" id="v-source"><iframe title="Source Device Monitor" src="/static/source.html" style="width:100%;height:1800px;border:0" loading="lazy"></iframe></section>
 </div>
-
 <script src="/static/charts.js?v=5"></script>
 <script src="/static/photons.js?v=5"></script>
 <script src="/static/app.js?v=5"></script>

@@ -19,6 +19,8 @@ import copy
 import json
 import sys
 import uuid
+import secrets
+import threading
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -144,6 +146,8 @@ app = FastAPI(title="QKD Security Operations Center", version="3.0")
 _model = joblib.load(CKPT) if CKPT.exists() else None
 _extractor = CausalMultiAttackFeatureExtractor(window_size=50, ema_span=10)
 _sessions: "OrderedDict[str, pd.DataFrame]" = OrderedDict()
+_blind_truth = OrderedDict()
+_blind_lock = threading.Lock()
 _MAX_SESSIONS = 32
 
 
@@ -188,6 +192,8 @@ def _package(df: pd.DataFrame, cls: int, p_eve: float, onset: int, extra: Option
         raise HTTPException(503, MODEL_HELP)
     n_cls = len(CLASS_NAMES)
     if _model is not None and "pred_class" not in df.columns:
+        if _model.n_features_in_ != len(FEATURE_NAMES_63):
+            raise HTTPException(503,'Checkpoint does not match the deployed 63-feature schema')
         probs = _model.predict_proba(df[FEATURE_NAMES_63].values)
         df = df.copy()
         df["pred_class"] = probs.argmax(axis=1)
@@ -198,6 +204,7 @@ def _package(df: pd.DataFrame, cls: int, p_eve: float, onset: int, extra: Option
     post = df[df["block_index"] >= onset]
     alarms = post.loc[post["pred_class"] != 0, "block_index"]
     delta_t = int(alarms.min() - onset) if len(alarms) else None
+    correct = post.loc[(post['pred_class']==cls) & (post['pred_class']!=0),'block_index']
     post_acc = float((post["pred_class"] == cls).mean()) if len(post) else None
     fp_rate = float((df["pred_class"] != 0).mean()) if cls == 0 else None
     has_ci = "qber_ci_low" in df.columns
@@ -228,6 +235,8 @@ def _package(df: pd.DataFrame, cls: int, p_eve: float, onset: int, extra: Option
             "final_efficiency": float(df["transmission_efficiency"].iloc[-1]),
             "final_asymmetry": float(df["basis_asymmetry"].iloc[-1]),
             "delta_t": delta_t,
+            "correct_class_latency": int(correct.min()-onset) if len(correct) and cls else None,
+            "latency_definition": "delta_t: any non-normal prediction; correct_class_latency: correct attack classification; misses null",
             "first_alarm": int(alarms.min()) if len(alarms) else None,
             "threshold_fires": bool((post["qber_mean"] > 0.11).any()),
             "post_accuracy": post_acc,
@@ -352,15 +361,33 @@ def _check_channel(ch):
 @app.post("/api/simulate/blind")
 def simulate_blind(req: BlindSimReq):
     _check_channel(req.channel)
-    rng = np.random.default_rng(req.seed + 7919)
+    seed = secrets.randbelow(10**9)
+    rng = np.random.default_rng(seed)
     n = len(CLASS_NAMES)
     probs = np.array([0.25] + [0.75 / (n - 1)] * (n - 1))
     cls = int(rng.choice(range(n), p=probs))
     onset = int(rng.integers(55, min(req.blocks - 20, 95)))
-    df, sp = _simulate(cls, req.channel, req.blocks, onset, req.seed)
-    pkg = _package(df, cls, sp.intensity, onset, {"seed": req.seed})
+    df, sp = _simulate(cls, req.channel, req.blocks, onset, seed)
+    pkg = _package(df, cls, sp.intensity, onset)
     pkg["blind"] = True
+    with _blind_lock:
+        _blind_truth[pkg['session_id']] = copy.deepcopy(pkg)
+        while len(_blind_truth)>_MAX_SESSIONS:
+            _blind_truth.popitem(last=False)
+    for key in ('class_id','class_name','class_full','p_eve','onset'):
+        pkg.pop(key,None)
+    pkg['summary']={k:v for k,v in pkg['summary'].items() if k in ('final_efficiency','final_asymmetry')}
+    pkg['provenance'].pop('seed',None)
     return pkg
+
+
+@app.post('/api/simulate/reveal/{session_id}')
+def reveal_blind(session_id: str):
+    with _blind_lock:
+        value=_blind_truth.get(session_id)
+    if value is None:
+        raise HTTPException(404,'Blind session expired; rerun simulation')
+    return value
 
 
 @app.post("/api/simulate")
@@ -393,6 +420,8 @@ def simulate_custom(req: CustomSimReq):
     })
     pkg["physics"] = {k: (float(v) if isinstance(v, (int, float, np.floating)) else v)
                       for k, v in sp.summary().items()}
+    pkg['capabilities']={'feature_schema':FEATURE_NAMES_63,'decoy_aware_classifier':False,
+                         'simulated_decoy_states':req.protocol=='decoy_bb84'}
     return pkg
 
 
@@ -592,6 +621,9 @@ class _RevalidatingStatic(StaticFiles):
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
+
+from backend.source_side import router as source_router
+app.include_router(source_router)
 
 if FRONTEND.exists():
     app.mount("/static", _RevalidatingStatic(directory=str(FRONTEND)), name="static")

@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13"]
+        python-version: ["3.11", "3.13.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,11 +21,19 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ "${{ matrix.python-version }}" = "3.13.13" ]; then
+            pip install -r requirements-phase3-lock.txt
+          else
+            pip install -r requirements.txt
+          fi
       - name: Unit tests (physics checks fail the build)
         run: python -m pytest -q
       - name: Smoke dataset generation
         run: python scripts/06_generate_multiattack_dataset.py --smoke --out-dir data/processed/smoke
+      - name: Phase 3 smoke reproduction and replay
+        run: |
+          python scripts/13_source_side_pipeline.py --quick
+          python scripts/14_source_monitor_replay.py "$(find results/phase3/runs -mindepth 1 -maxdepth 1 -type d | sort | tail -1)"
       - name: Smoke multi-seed evaluation
         run: python scripts/10_multiseed_evaluation.py --seeds 1 2 --sessions-per-class 6 --heldout-sessions-per-class 3 --svm-max-rows 1500 --models xgb rf --tag smoke
       - name: Upload smoke artefacts

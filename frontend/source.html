@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Source Device Monitor</title><link rel="stylesheet" href="/static/styles.css">
+<style>body{padding:20px;background:#f7fafb}main{max-width:1200px;margin:auto}select,input,button{padding:9px;margin:5px;border:1px solid #ccd9df;border-radius:8px}canvas{width:100%;height:220px}#charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px}.card{background:white;padding:16px;border:1px solid #dde5e8;border-radius:12px;margin:14px 0}pre{white-space:pre-wrap;max-height:300px;overflow:auto}#status{padding:12px;color:#334155}label{display:inline-block}h2{margin:12px 0}#bench{white-space:pre-line}</style></head>
+<body><main><h2>Source Device Monitor</h2><p>SIMULATED DATA · Device-assumption monitoring · No hardware validation or security certification</p>
+<div class="card"><label>Instrumentation <select id="profile"><option>minimal</option><option>instrumented</option></select></label>
+<label>Scenario <select id="scenario"></select></label><label>Seed <input id="seed" type="number" value="42" min="0" max="1000000000"></label>
+<label><input type="checkbox" id="blind" checked>Blind test</label>
+<label>Conditions <select id="stress"><option>nominal</option><option>weak</option><option>startup</option><option>slow</option><option>intermittent</option><option>sensor_failure</option><option>offset</option><option>environment</option><option>spectral_blind</option></select></label>
+<button id="run">Simulate</button><button id="reveal" disabled>Reveal ground truth</button><div id="status" role="status">Checking source model…</div></div>
+<p>Sensor reference lines show the training-benign range around the median. The score chart shows the validation alarm threshold.</p>
+<div id="charts"></div><div class="card"><h3>Scores and alarm timeline</h3><canvas id="timeline" width="1000" height="220" role="img" aria-label="Fusion score and revealed events over seconds"></canvas><p id="summary"></p></div>
+<div class="card"><h3>Inspect a sample</h3><label for="sample">Physical-time sample</label><input id="sample" type="range" min="0" max="299" value="0"><span id="sampleLabel"></span><button id="explain">Classifier SHAP</button><pre id="detail"></pre><div id="shap"></div></div>
+<div class="card"><h3>Ground truth</h3><pre id="truth">Hidden until reveal.</pre></div>
+<div class="card"><h3>Evaluation</h3><p>Event rates use pure benign sessions; latency includes only detected events. See artifacts for missed events and stress tests.</p><div id="bench"></div></div>
+<p id="provenance"></p></main><script src="/static/source.js"></script></body></html>

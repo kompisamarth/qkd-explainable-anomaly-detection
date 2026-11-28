@@ -32,9 +32,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--legacy", action="store_true")
+    ap.add_argument("--phase3", action="store_true", help="isolated Phase 3 reproduction")
     a = ap.parse_args()
 
     step("Unit tests (physics, datasets, features, dashboard)", ["-m", "pytest", "-q"])
+    if a.phase3:
+        step("Phase 3 immutable run", ["scripts/13_source_side_pipeline.py"] + (["--quick"] if a.quick else []))
+        return
     step("Legacy physics verification", ["scripts/01_verify_physics.py"])
     if a.quick:
         step("Smoke dataset", ["scripts/06_generate_multiattack_dataset.py", "--smoke",

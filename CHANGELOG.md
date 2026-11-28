@@ -1,3 +1,12 @@
+# 2026-11-28 — Phase 3 hardening
+
+- Added source telemetry simulation/monitoring with shared sensor RNGs, persisted quality, explicit component effects and causal feature schemas.
+- Unified new-alarm exposure metrics, calibration/test/replay semantics, disjoint calibration devices and calibrated score fusion.
+- Added immutable checksummed runs, pinned Python 3.13 environment, multi-seed stress/ablations, replay and CI smoke coverage.
+- Sealed BB84/source blind truth server-side; added source dashboard explanations and responsive timelines.
+- Fixed signal-calibrated blinding trigger reuse across decoy intensities and undefined latency for missed Phase 2 detections. Historical Phase 2 results preserved; corrected decoy benchmarks require a full rerun.
+- Superseded prototype Phase 3 results. See docs/PHASE3_HARDENING.md for measured results and remaining limitations.
+
 # Changelog
 
 Entries follow the improvement plan, one per section. Each lists what changed, which

@@ -5,12 +5,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![IEEE Format](https://img.shields.io/badge/Paper-IEEE%20EL%20Conference-orange.svg)](#)
 
-A research pipeline and benchmark implementation for explainable, low-latency machine learning detection of stealthy attacks on Quantum Key Distribution. It covers the traditional **BB84** protocol, a **Sending-or-Not-Sending Twin-Field QKD (SNS-TF-QKD)** simulator, and — from Phase 3 — a **source-side side-channel monitor** targeting the transmitter light-injection attacks that no security proof currently covers.
+A research pipeline and benchmark implementation for explainable, low-latency machine learning detection of stealthy attacks on Quantum Key Distribution. It covers the traditional **BB84** protocol, a **Sending-or-Not-Sending Twin-Field QKD (SNS-TF-QKD)** simulator, and — from Phase 3 — a **source-side side-channel monitor** targeting the transmitter light-injection events that can violate the assumptions of a particular source model.
 
 **Project status:** Phase 1 and Phase 2 complete. The 2026-11 revision replaced the multi-attack
 simulator with a physically calibrated one and re-evaluated everything; see
-[Section 0](#0-current-results-and-one-command-reproduction). Phase 3 is specified in
-[Section 3](#3-phase-3-roadmap) and not yet implemented.
+[Section 0](#0-current-results-and-one-command-reproduction). Phase 3 now includes a local source-monitor prototype. See [the implementation and reproduction guide](docs/PHASE3.md). The historical plan is in
+[Section 3](#3-phase-3-roadmap).
 
 > **All results are from simulation** except the files prefixed `real_`, which use benign
 > telemetry from commercial QKD systems (Zenodo 21792844). Read [LIMITATIONS.md](LIMITATIONS.md)
@@ -95,172 +95,103 @@ While modern ML classifiers can reach high static classification accuracy, liter
 2. **Cross-Channel Noise Generalization**: How does a model trained under stationary depolarizing fiber noise ($e_0 = 3\%$) degrade when deployed onto non-stationary free-space/satellite links subject to log-normal atmospheric turbulence and scintillation drift?
 3. **Transparent Explainability (XAI)**: Can the detector provide verifiable, feature-level attribution (via SHAP TreeExplainer) justifying an autonomous key-abort decision?
 
-**Phase 3 adds a fourth, and reframes the contribution** (see Section 2): the most dangerous attacks of 2024–2026 are not channel attacks at all. They are *implementation* attacks that violate the device assumptions every security proof takes as a premise. The question becomes not "can ML detect Eve in the key?" but **"can ML certify at runtime that the security proof's assumptions still hold?"**
+**Phase 3 adds a fourth, and reframes the contribution** (see Section 2): the most dangerous attacks of 2024–2026 are not channel attacks at all. They are *implementation* attacks that violate the device assumptions every security proof takes as a premise. The question becomes not "can ML detect Eve in the key?" but **"which observable changes in device behavior can ML flag during operation?"**
 
 ---
 
-## 2. Threat Landscape (2024–2026) and Protocol Selection
+## 2. Threat model and protocol scope
 
-### 2.1 Attack taxonomy by structural location
+QKD security depends on the protocol proof, implementation assumptions, parameter
+estimation, authentication and laboratory isolation. A classifier alarm is an
+operational warning; a normal prediction is **not a security certificate**.
 
-The practically hardest-to-manage attacks in the current literature sort into three structural locations. What matters for protocol selection is **where** the attack lives, not how it is implemented.
+| Attack surface | BB84 / decoy BB84 | MDI / SNS-TF | This repository |
+|---|---|---|---|
+| Channel interception | Parameter estimation and privacy amplification under the chosen proof | Protocol-specific estimation remains necessary | Calibrated synthetic benchmarks |
+| Multiphoton leakage | Decoy estimation bounds single-photon contributions under source assumptions | Source/decoy assumptions remain necessary | Signal/decoy/vacuum simulations |
+| Measurement-device attacks | Trusted-detector assumptions can fail | Untrusted relay allowed under the corresponding proof and its assumptions | Analytic illustrations, not an arbitrary-adversary proof |
+| Source leakage / light injection | Characterization, isolation, countermeasures and suitable bounds required | Source characterization and isolation also required | Phenomenological monitor; no leakage-to-key security bound |
+| CV-QKD attacks | Outside this discrete-variable model | Outside this model | Not implemented |
 
-| Group | Attacks | Why it is hard |
-|---|---|---|
-| **(A) Measurement / detector side** | Detector blinding & faked-state, detector-efficiency mismatch, time-shift, backflash leakage | Blinding has been **experimentally demonstrated to recover a full key without raising QBER**, on both APD and superconducting-nanowire detectors. The one obvious alarm bell never rings. Backflash leaks up to ~10% of detection events back down the channel. |
-| **(B) Source / transmitter side (light injection)** | Trojan-horse (THA), laser seeding / injection locking, induced photorefraction, laser damage | Eve injects light **into** Alice's device. The attack surface is the full spectrum (visible through ~1500–2100 nm), not just 1550 nm. Several of these — notably light injection and induced photorefraction — are **not covered by existing security proofs**. |
-| **(C) CV-QKD specific** | Homodyne-detector blinding, local-oscillator and calibration attacks | Different physical layer (quadratures, excess noise). Out of scope for this DV-focused project; noted for completeness. |
+The MDI slider is an **ANALYTIC MODEL**: it stipulates a particular Z-measure/resend
+strategy and a linear X-error mixture. Its approximately 20% illustrative threshold
+is not a universal detector-control threshold. MDI/TF rate calculations are
+asymptotic models, not hardware validation. See [limitations](LIMITATIONS.md).
 
-### 2.2 Protocol coverage matrix
+Source attacks can have simultaneous effects: injected light may damage isolation
+and seed the laser. A damage-to-Trojan-horse schedule does not imply pure component
+effects. The watchdog measures an assumed incident-light tap with spectral
+sensitivity. Returned light is hidden truth, not watchdog telemetry.
+Modulation-clock correlation and hardware-calibrated source bounds are not implemented.
 
-"Closed" means the attack is **structurally impossible or harmless by construction**, not merely detectable by a statistic.
+## 3. Phase 3 implementation and reproduction
 
-| Attack | Location | BB84 | Decoy-BB84 | MDI-QKD | SNS-TF-QKD | DI-QKD |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Intercept-resend | channel | detectable | detectable | detectable | detectable | closed |
-| Photon-number splitting | source/channel | **open** | closed | closed | closed | closed |
-| Beam splitting | channel | open | partial | closed | closed | closed |
-| **Detector blinding / faked-state** | detector | **open** | **open** | **closed** | **closed** | closed |
-| **Detector-efficiency mismatch** | detector | **open** | **open** | **closed** | **closed** | closed |
-| **Time-shift** | detector | **open** | **open** | **closed** | **closed** | closed |
-| **Backflash leakage** | detector | **open** | **open** | **closed** | **closed** | closed |
-| **Trojan-horse (THA)** | **source** | open | open | **OPEN** | **OPEN** | **OPEN** |
-| **Laser seeding / injection locking** | **source** | open | open | **OPEN** | **OPEN** | **OPEN** |
-| **Induced photorefraction** | **source** | open | open | **OPEN** | **OPEN** | **OPEN** |
-| **Laser damage** | **source** | open | open | **OPEN** | **OPEN** | **OPEN** |
+Phase 3 contains a stateful source simulator, causal telemetry features, XGBoost,
+an independent benign-only Isolation Forest, and a Source Monitor dashboard tab.
+Minimal instrumentation uses watchdog power, intensity, temperature and modulator
+bias; instrumented mode adds isolation, extinction ratio, SMSR, RIN and wavelength.
+All source mappings in `config/source_side.yaml` are versioned **ASSUMPTIONS**.
 
-### 2.3 Decision: MDI family (SNS-TF-QKD) as backbone
+The hardened evaluator requires a **new alarm during exposure**. It reports
+persistent-effect detection, pre-onset false alarms, startup attacks, censoring,
+and both chain stages separately. Missed latency is missing. Calibration devices
+and operating-point selection devices are disjoint. Temperature-calibrated class
+probabilities and validation-normalized classifier/anomaly excursions replace the
+prototype's mixed-scale maximum. The fused score is **not** an attack probability.
+Engineering limits, EWMA, CUSUM, classifier, anomaly and receiver-only baselines use
+the same operating-point procedure; achieved FAR and exposure are reported.
 
-**The most efficient protocol against this threat list is the measurement-device-independent family — concretely SNS-TF-QKD, which this repository already implements.**
+Use Python **3.13.13** and the exact tested environment in
+[requirements-phase3-lock.txt](requirements-phase3-lock.txt), including NumPy
+**2.1.3**, consistent with `requirements.txt`:
 
-The reasoning:
+```powershell
+python -m venv .venv-phase3
+.venv-phase3/Scripts/python -m pip install -r requirements-phase3-lock.txt
+.venv-phase3/Scripts/python -m pytest -q
+.venv-phase3/Scripts/python reproduce.py --phase3 --quick
+.venv-phase3/Scripts/python scripts/13_source_side_pipeline.py --bounded --seeds 42 43 44 --workers 2 --activate-local
+# Use the completed run path printed by the pipeline:
+.venv-phase3/Scripts/python scripts/14_source_monitor_replay.py results/phase3/runs/<run-id>
+.venv-phase3/Scripts/python run_dashboard.py
+```
 
-* **It eliminates the entire detector-side group (A) by construction.** In MDI-QKD and TF-QKD the measurement device is operated by an *untrusted* relay (Charlie). Eve is *permitted* to control the detectors completely; doing so cannot bias the key, only reduce the rate. Blinding, faked-state, efficiency mismatch, time-shift and backflash all stop being attacks. For blinding in particular — where a statistical monitor can only ever be a heuristic, because the attack produces no QBER signature — this is the difference between a guess and a proof.
-* **It is deployable today.** Metropolitan MDI-QKD networks are operational, and SNS-TF-QKD holds the ~1000 km fiber record (Liu et al., *PRL* 130, 210801, 2023). DI-QKD closes marginally more in theory but needs detection-loophole-free Bell violation; its rates and distances remain impractical.
-* **It costs this project almost nothing.** `src/simulator/tf_qkd.py` already models the untrusted relay, beam-splitter interference, decoy-state single-photon yield and phase-error estimation. MDI-QKD is the sibling protocol.
+Immutable runs under `results/phase3/runs/<UTC-time>-<id>/` contain manifests,
+source snapshots/hashes, package versions, config, schemas and checksums. Each
+session has observations, hidden truth and full schedule/device/sensor metadata.
+Replay reproduces every event row exactly. Only `--activate-local` selects a
+validated completed run for the local dashboard; smoke models cannot be activated.
+Generated models and telemetry are excluded from Git and reproduced locally.
 
-### 2.4 Why no protocol closes group (B) — the sealed-laboratory assumption
-
-This is the pivot that reshapes the methodology.
-
-> **Every** QKD security proof — BB84, decoy-state, MDI, and even device-independent — assumes that *no unwanted information leaves Alice's and Bob's laboratories*. Trojan-horse and the wider light-injection family attack that premise **from outside the protocol**. They are therefore not fixable by any choice of protocol, including DI-QKD.
-
-Group (B) can only be addressed by hardware countermeasures (optical isolators, spectral filters, power limiters, watchdog photodiodes) **plus runtime monitoring** — and the literature openly concedes that the proofs have not caught up with the attacks.
-
-**That gap is the Phase 3 research contribution.** The protocol closes what proofs can close; the ML layer monitors what proofs cannot.
-
-### 2.5 Why temporal ML is the right instrument for group (B)
-
-This is not an arbitrary pairing. The group (B) attacks have **inherently temporal signatures**, which is precisely what this project's existing causal feature machinery (63 features, drift slope, multi-scale statistics, autocorrelation, spectral entropy) was built to capture:
-
-| Attack | Physical mechanism | Temporal signature |
-|---|---|---|
-| **Induced photorefraction** | Short-wavelength light builds a space-charge field in Alice's LiNbO₃ modulator, shifting its photorefractive properties | **Slow saturating-exponential drift** of modulator bias and extinction ratio over minutes–hours; partially recovers in the dark. Invisible to any static threshold; trivial for a drift-slope feature. |
-| **Laser damage** | High-power laser permanently degrades the isolator/attenuator | **Monotonic, irreversible** step/ramp in optical isolation. Distinguished from photorefraction precisely by *non-recovery*. |
-| **Laser seeding / injection locking** | Injected light seeds Alice's laser cavity | **Abrupt step** in side-mode suppression ratio, relative intensity noise and emitted wavelength at attack onset. |
-| **Trojan-horse** | Eve probes and reads back-reflections | Back-reflection power at the watchdog photodiode, **phase-locked to Alice's modulation frame** — Eve must probe *during* state preparation, so the cross-correlation with the modulation clock is the signature. |
-
-Note also that **laser damage is a precursor**: degrading isolation is what *enables* THA and laser seeding. Phase 3 therefore models attack **chains**, not just isolated attacks, and targets detection of the precursor before the downstream attack succeeds.
-
-### 2.6 Simulated verification of that decision (`src/simulator/mdi_qkd.py`)
-
-The claim in 2.3 is now implemented and measured rather than asserted. Charlie's station is modelled from first principles - a 50:50 beam splitter, a polarising beam splitter per output arm and four detectors - with gains and error rates obtained by averaging the two-fold coincidence probabilities over the random relative phase of two independent lasers, the same method already used in `tf_qkd.py`.
-
-**Physics checks** (`tests/test_mdi_qkd.py`, 8 tests):
-
-| Check | Result |
-|---|---|
-| Ideal relay, no dark counts or misalignment | `E_Z` exactly 0 |
-| Single-photon phase error vs theory | `e11` = 0.0296 = 2·e_d(1−e_d), to 1e-12 |
-| Rate scaling | falls ~100x per 100 km (linear in η_a·η_b) |
-| Does MDI-QKD beat the PLOB bound? | No, at any distance - as it should not |
-| SNS-TF-QKD vs MDI-QKD at 300 km | TF-QKD wins, confirming its √η advantage |
-
-**The detector attack, run against both protocols** (`fig9_detector_attack_comparison.png`, `mdi_detector_attack_comparison.csv`):
-
-| Eve controls the measurement device | BB84 + blinding | MDI-QKD + Eve as Charlie |
-|---|:---:|:---:|
-| Key bits Eve learns | **100%** | 100% in the Z basis |
-| Error rate the operator observes | 0.50% | 0.50% |
-| Independent security monitor | none - Eve forges the check basis too | **X-basis phase error, 50%** |
-| Protocol aborts? | **No** | **Yes** |
-
-MDI-QKD trips its monitor once Eve controls just **20%** of the relay; BB84 never trips at any control fraction. The reason is structural: measuring the pulses to learn Z-basis bits destroys their X-basis coherence, and that phase error is computed by Alice and Bob from states *they* prepared, so Eve cannot forge it.
-
-**The price is rate, not security.** MDI-QKD's key rate scales with the product of the two arm transmittances, so it is slower than BB84 at every distance and never beats the PLOB bound. That is TF-QKD's trick, not MDI's.
-
-| Distance | MDI-QKD | SNS-TF-QKD | Decoy BB84 |
-|:---:|:---:|:---:|:---:|
-| 100 km | 9.3e-5 | 4.9e-4 | 1.3e-3 |
-| 200 km | 9.1e-7 | 4.7e-5 | 1.3e-5 |
-| 300 km | 8.8e-9 | 4.6e-6 | 6.2e-8 |
+The earlier **132/150** result in `results/phase3/full` is a **superseded prototype
+result**, preserved unchanged. Bounded audit runs are **exploratory synthetic
+evidence**, not frozen final tests or hardware validation. Stress tests and
+ablations run across seeds; seeding and photorefraction are separately held out
+for unknown-rejection evaluation. Longer benign sessions and seed-then-device
+bootstrap intervals improve reporting, but few model seeds and finite exposure
+still limit precision. Zero observed false alarms do not imply zero risk.
+See [Phase 3 guide](docs/PHASE3.md) and [hardening audit](docs/PHASE3_HARDENING.md)
+for measured results, the evidence ledger and remaining limitations.
 
 ---
 
-## 3. Phase 3 Roadmap
+### Latest bounded audit results
 
-Phase 3 is the final submission phase. It has two halves: hardening what Phase 2 already claims, then building the source-side monitor.
+Seeds 42–44; 45 nominal attack sessions and 10.2 benign test hours per profile.
 
-### 3.0 Phase 2 close-out (prerequisite — do first)
+| Monitor | New alarm during exposure | False alarms | Detected-only mean latency |
+|---|---:|---:|---:|
+| Minimal source fusion | 35/45 (77.8%) | 0 | 24.6 s |
+| Instrumented source fusion | 36/45 (80.0%) | 1 | 35.6 s |
+| Receiver-only baseline | 22/45 (48.9%) | 0 | 83.1 s |
 
-The Phase 2 classifier reports 99.93% accuracy (Section 10.3). That number is **not trustworthy as a generalization estimate**, and must be corrected before it goes into a submission.
-
-| # | Task | Rationale |
-|---|---|---|
-| P2.1 | **DONE** - **Overlap the nuisance ranges across classes.** Draw per-session baseline QBER, detector efficiency, channel loss and misalignment from *overlapping* distributions instead of per-class constants. | Each attack class currently carries a hand-coded, near-deterministic fingerprint (fake-state forces effective noise to `min(0.005, ·)`; time-shift hard-codes η_Z = 1.0 vs η_X = 0.4). The model is partly learning the simulator, not the physics. |
-| P2.2 | **DONE** - **Re-report accuracy as mean ± std over ≥ 5 seeds.** Accuracy fell from 99.93% to 85.63% ± 1.36% (Section 10.3). | A single-seed 99.93% on synthetic multi-class data is a red flag reviewers will press on. |
-| P2.3 | **Add detection latency ΔT and FPR to the 5-class evaluation.** | Currently only accuracy/F1 are reported for Phase 2, losing the operational framing that makes Phase 1 strong. |
-| P2.4 | **Run the 5-class model cross-channel (fiber → free-space).** | Section 9.3 is the most intellectually honest result in the repo; Phase 2 has no equivalent. |
-
-**Acceptance:** no single feature separates any class pair; reported accuracy carries a seed-variance band; ΔT and FPR tables exist for all five classes.
-
-### 3.1 WS-1 — MDI-QKD backbone  *(core model DONE — see Section 2.6)*
-
-Extend `src/simulator/tf_qkd.py` into a shared MDI module covering both MDI-QKD (Bell-state measurement at Charlie, decoy states, Z/X encoding) and the existing SNS-TF-QKD.
-
-**Deliverables:** key rate vs. distance curves for MDI-QKD alongside the existing SNS-TF and decoy-BB84 curves; a demonstration that a simulated blinding/time-shift attack on Charlie's detectors yields Eve **no key advantage**, only rate reduction.
-
-**Acceptance:** MDI key-rate curve reproduces published behaviour within an order of magnitude; the blinding demonstration is a passing test, not a plot.
-
-### 3.2 WS-2 — Source-side telemetry simulator (the new physics)
-
-New module `src/simulator/source_side.py`. Model Alice's transmitter as a component chain emitting observable telemetry alongside the protocol statistics.
-
-**Telemetry channels:**
-
-| Signal | Units | Primarily reveals |
-|---|---|---|
-| `watchdog_power` | nW | Trojan-horse back-reflection |
-| `isolation_db` | dB | Laser damage (irreversible degradation) |
-| `smsr_db`, `rin`, `wavelength_shift_pm` | dB, —, pm | Laser seeding / injection locking |
-| `modulator_bias_v`, `extinction_ratio_db` | V, dB | Induced photorefraction |
-| `qber_z`, `qber_x`, `gain`, decoy yields | — | Protocol-level consequences of all of the above |
-
-**Attack classes:** 0 Normal · 1 Trojan-horse · 2 Laser seeding · 3 Induced photorefraction · 4 Laser damage · 5 Laser-damage → THA **chain**.
-
-**Physics to get right:** THA leakage bounded by outgoing photon number $\mu_{\text{out}}$ (Lucamarini et al., *PRX* 2015), with back-reflected power $P_{\text{wd}} = P_{\text{in}} R \cdot 10^{-I/10}$; photorefraction as a saturating exponential with time constant τ and slow dark recovery; laser damage as a monotonic non-recovering isolation drop that raises the success probability of the subsequent THA.
-
-**Acceptance:** each attack's effect on $\mu_{\text{out}}$ and on QBER is derived from the component model, not hard-coded; benign nuisance drift (thermal, aging) overlaps the attack ranges so the classes are not trivially separable.
-
-### 3.3 WS-3 — Multi-modal temporal ML + XAI
-
-Generalize `CausalMultiAttackFeatureExtractor` from a single QBER stream to **multi-channel telemetry**, applying the existing 63-feature bank per channel and adding cross-channel features (notably watchdog × modulation-clock correlation for THA).
-
-**Models:** XGBoost and Random Forest. **Baselines:** fixed threshold per telemetry channel, CUSUM changepoint detection, and the Hoeffding test — to show that single-channel thresholds miss the slow-drift attacks.
-
-**Reported:** accuracy, macro-F1, per-class F1, FNR, detection latency ΔT, FPR calibrated at 1%, SHAP attribution **by telemetry channel**, and leave-one-modality-out ablation.
-
-**Acceptance:** SHAP identifies the physically correct channel for each attack (e.g. `modulator_bias_v` drift for photorefraction, `isolation_db` for laser damage); latency for the slow-drift attacks is reported in physical time, not just blocks.
-
-### 3.4 WS-4 — Integration and deliverables
-
-Coverage matrix (Section 2.2) as a publication figure showing which layer stops which attack; extended SOC dashboard with a source-side telemetry panel; `docs/PHYSICS.md` and `docs/THREAT_MODEL.md` in plain language; consolidated limitations.
-
-### 3.5 Sequencing
-
-WS-1 and WS-2 are independent and can proceed in parallel. WS-3 depends on WS-2. P2.0 close-out should precede everything, because the leakage fix changes every number Phase 2 reports.
-
----
+**83 tests passed, 1 skipped** (external real telemetry absent); bounded replay
+reproduced **10,458 event rows exactly**. [Run summary](results/phase3/hardened_bounded_summary.csv).
+These are exploratory synthetic results. Spectral-blind detection falls to
+24.4% / 40.0% for minimal / instrumented profiles. Known-sample false rejection
+ranges from 51.7–83.6% / 2.0–66.4% across seeds: the novelty flag needs further
+validation and is not operationally reliable. See the audit for uncertainty,
+misses, stress tests and the distinction from the superseded 132/150 result.
 
 ## 4. Repository Architecture
 
@@ -272,7 +203,7 @@ qkd-explainable-anomaly-detection/
 ├── requirements.txt             # loose bounds; requirements-lock.txt = exact versions
 ├── AUDIT.md CHANGELOG.md DATA_CARD.md DATASETS.md LIMITATIONS.md LICENSE CITATION.cff
 ├── backend/server.py            # FastAPI: simulate (blind/guided/custom), explain, benchmarks, channel, data, mdi
-├── frontend/                    # no-build UI: 8 tabs, every chart labelled with source + seed
+├── frontend/                    # no-build UI: 9 tabs, every chart labelled with source + seed
 ├── src/
 │   ├── config.py                # merges config.yaml + config/physics.yaml; config hash, git commit
 │   ├── simulator/
