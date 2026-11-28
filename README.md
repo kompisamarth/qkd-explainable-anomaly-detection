@@ -129,6 +129,10 @@ Modulation-clock correlation and hardware-calibrated source bounds are not imple
 
 ### Deploy the dashboard to Vercel
 
+For automatic deployments, connect the repository in **Vercel → Project Settings → Git** and set the Production branch to `main`. Use the repository root and the FastAPI framework. The repository includes three checksummed synthetic inference checkpoints for Git builds. Keep the project's Redis credentials in Vercel for both Preview and Production. See the [Git deployment and model update guide](docs/VERCEL.md).
+
+For a manual CLI upload from a new set of locally trained models:
+
 1. Use Python 3.13.13, the [Phase 3 dependency lock](requirements-phase3-lock.txt), Node.js, and a Vercel account. Prepare the BB84 checkpoint and complete a bounded or full Phase 3 run. The [deployment guide](docs/VERCEL.md) includes the commands for a fresh clone.
 2. From the repository root, run the following. Replace the example run path with the path printed by your Phase 3 run.
 
@@ -142,7 +146,7 @@ Modulation-clock correlation and hardware-calibrated source bounds are not imple
 3. Connect **Upstash Redis** in the Vercel project. Enable `KV_REST_API_URL` and `KV_REST_API_TOKEN` for Preview and Production. Vercel's marketplace integration supplies these variables. Redis keeps Reveal and SHAP working across server instances. [Upstash setup](https://upstash.com/docs/redis/howto/vercelintegration)
 4. Run `npx --yes vercel deploy` from the prepared folder. On the preview, check `/healthz`, `/api/source/meta`, and the blind reveal and SHAP flows. Run `npx --yes vercel deploy --prod` to publish.
 
-Use the prepared folder for the CLI upload. The GitHub checkout requires locally generated inference checkpoints before it can serve interactive simulations.
+Use the prepared folder for a manual upload. Git deployments read their checkpoints directly from `hosted_models/`.
 
 Phase 3 contains a stateful source simulator, causal telemetry features, XGBoost,
 an independent benign-only Isolation Forest, and a Source Monitor dashboard tab.

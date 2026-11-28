@@ -1,6 +1,7 @@
 """Source monitor API: blind truth stays server-side until explicit reveal."""
 from collections import OrderedDict
 import json
+import os
 import secrets
 import threading
 import joblib
@@ -18,9 +19,9 @@ model_cache={}
 
 
 def active_run():
-    if (ROOT/'hosted_models/manifest.json').is_file():
-        return ROOT/'hosted_models'
     pointer=ROOT/'results/phase3/active.json'
+    if os.getenv('VERCEL') == '1' and (ROOT/'hosted_models/manifest.json').is_file():
+        return ROOT/'hosted_models'
     if not pointer.exists():
         raise ValueError('No active source run. Reproduce with --activate-local.')
     directory=(ROOT/json.loads(pointer.read_text())['run']).resolve()

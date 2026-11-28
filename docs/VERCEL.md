@@ -2,10 +2,30 @@
 
 [Live QKD dashboard](https://qkd-dashboard-orpin.vercel.app/)
 
+## Automatic deployment from GitHub
+
+1. In the existing Vercel project, open **Settings → Git** and connect the GitHub repository. If GitHub asks which repositories the Vercel app may access, select this repository.
+2. Use the repository root and the FastAPI framework. Under **Settings → Environments → Production**, set branch tracking to `main`. The root configuration selects Python 3.13 and checks model compatibility before deployment.
+3. Connect Upstash Redis to both Preview and Production and check for `KV_REST_API_URL` and `KV_REST_API_TOKEN` in Vercel's environment settings. The app also accepts the corresponding Upstash REST variables.
+4. Verify the first Git deployment in the Vercel activity view. Check `/healthz`, `/api/source/meta`, and blind simulation, reveal, and SHAP for BB84 and both source profiles.
+
+Git builds use the three versioned synthetic inference checkpoints in
+`hosted_models/`. Training data and credentials are generated or configured
+separately. To refresh the versioned bundle after training, prepare it in a
+fresh directory under the repo, review the replacement files, and run the
+release check before pushing.
+
+```powershell
+.\.venv-phase3\Scripts\python.exe scripts/15_prepare_vercel.py 'results/phase3/runs/<run-id>' --git-assets --output .vercel-qkd/next-hosted-models
+# Replace hosted_models/ with the reviewed output, keeping its directory layout.
+.\.venv-phase3\Scripts\python.exe scripts/16_check_vercel_release.py
+```
+
+## Manual CLI upload
+
 The CLI upload includes the dashboard, FastAPI routes, BB84 checkpoint, both
 Phase 3 checkpoints and benchmark tables. Training and dataset replay run
-separately. Use the prepared upload directory for deployment because a plain
-GitHub import has no local model checkpoints.
+separately. Use this path to deploy checkpoints from a new local run.
 
 From a fresh clone, run these commands in PowerShell with Python 3.13.13.
 They install the pinned environment, generate the BB84 dataset and checkpoint,

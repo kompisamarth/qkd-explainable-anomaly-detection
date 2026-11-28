@@ -10,13 +10,49 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.data.source_artifacts import PACKAGES, digest, validate_run, write_json
+from backend.hosted_models import source_digest
+
+BB84_CHECKPOINT = Path("data/processed/checkpoints/xgb_multiattack.joblib")
 
 
-def prepare(run, output):
+def inference_manifest(run, manifest, directory, *, git_assets=False):
+    inference = {name: manifest[name] for name in (
+        "schema", "versions", "deployment", "source_hashes", "provenance")}
+    inference.update(status="inference", run_id=run.name, feature_schemas={}, checksums={})
+    if git_assets:
+        inference["normalize_source_newlines"] = True
+        inference["source_hashes"] = {
+            name: source_digest(ROOT / name, normalize_newlines=True)
+            for name in manifest["source_hashes"] if name.startswith(("src/", "config/"))
+        }
+    for filename in [*inference["deployment"].values(), "summary.csv"]:
+        target = directory / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if git_assets and filename == "summary.csv":
+            target.write_bytes((run / filename).read_bytes().replace(b"\r\n", b"\n"))
+        else:
+            shutil.copyfile(run / filename, target)
+        inference["checksums"][filename] = digest(target)
+        if filename in manifest["feature_schemas"]:
+            inference["feature_schemas"][filename] = manifest["feature_schemas"][filename]
+    if git_assets:
+        filename = "data/xgb_multiattack.joblib"
+        target = directory / filename
+        shutil.copyfile(ROOT / BB84_CHECKPOINT, target)
+        inference["bb84_checkpoint"] = filename
+        inference["checksums"][filename] = digest(target)
+    write_json(directory / "manifest.json", inference)
+
+
+def prepare(run, output, *, git_assets=False):
     manifest = validate_run(run)
     if manifest["mode"] == "smoke":
         raise ValueError("Choose a bounded or full run for inference")
     output.mkdir(parents=True, exist_ok=False)
+    if git_assets:
+        inference_manifest(run, manifest, output, git_assets=True)
+        print(f"Vercel inference assets prepared at {output}")
+        return
 
     def copy(source, name):
         target = output / name
@@ -36,19 +72,8 @@ def prepare(run, output):
         path = ROOT / "data/processed" / filename
         if path.is_file():
             copy(path, path.relative_to(ROOT))
-    checkpoint = Path("data/processed/checkpoints/xgb_multiattack.joblib")
-    copy(ROOT / checkpoint, checkpoint)
-
-    inference = {name: manifest[name] for name in (
-        "schema", "versions", "deployment", "source_hashes", "provenance")}
-    inference.update(status="inference", run_id=run.name, feature_schemas={}, checksums={})
-    for filename in [*inference["deployment"].values(), "summary.csv"]:
-        destination = Path("hosted_models") / filename
-        copy(run / filename, destination)
-        inference["checksums"][filename] = digest(output / destination)
-        if filename in manifest["feature_schemas"]:
-            inference["feature_schemas"][filename] = manifest["feature_schemas"][filename]
-    write_json(output / "hosted_models/manifest.json", inference)
+    copy(ROOT / BB84_CHECKPOINT, BB84_CHECKPOINT)
+    inference_manifest(run, manifest, output / "hosted_models")
 
     (output / "app.py").write_text("from backend.server import app\n", encoding="utf-8")
     (output / ".python-version").write_text("3.13\n", encoding="utf-8")
@@ -75,5 +100,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run", type=Path, help="Completed Phase 3 run directory")
     parser.add_argument("--output", type=Path, default=ROOT / ".vercel-qkd")
+    parser.add_argument("--git-assets", action="store_true",
+                        help="Write only versioned inference assets, for the hosted_models directory")
     args = parser.parse_args()
-    prepare(args.run.resolve(), args.output.resolve())
+    prepare(args.run.resolve(), args.output.resolve(), git_assets=args.git_assets)

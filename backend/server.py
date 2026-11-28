@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sys
 import uuid
 import secrets
@@ -144,7 +145,20 @@ SCENARIOS = [
 
 app = FastAPI(title="QKD Security Operations Center", version="3.0")
 
-_model = joblib.load(CKPT) if CKPT.exists() else None
+def _load_bb84_model():
+    hosted = ROOT_DIR / "hosted_models"
+    if os.getenv("VERCEL") == "1" and (hosted / "manifest.json").exists():
+        from backend.hosted_models import validate_bundle
+        manifest = validate_bundle(hosted)
+        filename = manifest.get("bb84_checkpoint")
+        if filename in manifest["checksums"]:
+            return joblib.load(hosted / filename)
+    if CKPT.exists():
+        return joblib.load(CKPT)
+    return None
+
+
+_model = _load_bb84_model()
 _extractor = CausalMultiAttackFeatureExtractor(window_size=50, ema_span=10)
 _sessions: "OrderedDict[str, pd.DataFrame]" = OrderedDict()
 _blind_truth = OrderedDict()

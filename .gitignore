@@ -65,4 +65,9 @@ results/figures/*_smoke.png
 /results/phase3/active.json
 /results/phase3/verification-*.txt
 /.vercel-qkd/
+/.vercel-qkd-git-preview/
 /.vercel/
+# Versioned, checksummed synthetic inference checkpoints for Git deployments.
+!/hosted_models/data/monitor_minimal_*.joblib
+!/hosted_models/data/monitor_instrumented_*.joblib
+!/hosted_models/data/xgb_multiattack.joblib
