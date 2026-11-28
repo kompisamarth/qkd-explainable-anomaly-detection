@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![IEEE Format](https://img.shields.io/badge/Paper-IEEE%20EL%20Conference-orange.svg)](#)
 
-**Live demo:** [Open the QKD dashboard on Vercel](https://qkd-dashboard-orpin.vercel.app/). Try a BB84 blind test or select either sensor profile in the Source Monitor tab.
+**Live demo:** [Open the QKD dashboard on Vercel](https://qkd-dashboard-orpin.vercel.app/). Pushes to `main` automatically deploy to this URL. Try a BB84 blind test or select either sensor profile in the Source Monitor tab.
 
 A research pipeline and benchmark implementation for explainable, low-latency machine learning detection of stealthy attacks on Quantum Key Distribution. It covers the traditional **BB84** protocol, a **Sending-or-Not-Sending Twin-Field QKD (SNS-TF-QKD)** simulator, and — from Phase 3 — a **source-side side-channel monitor** targeting the transmitter light-injection events that can violate the assumptions of a particular source model.
 
@@ -129,7 +129,15 @@ Modulation-clock correlation and hardware-calibrated source bounds are not imple
 
 ### Deploy the dashboard to Vercel
 
-For automatic deployments, connect the repository in **Vercel → Project Settings → Git** and set the Production branch to `main`. Use the repository root and the FastAPI framework. The repository includes three checksummed synthetic inference checkpoints for Git builds. Keep the project's Redis credentials in Vercel for both Preview and Production. See the [Git deployment and model update guide](docs/VERCEL.md).
+The GitHub repository is connected to Vercel, with `main` as the production branch. Each push to `main` triggers a production build with the three checksummed inference checkpoints in `hosted_models/`. Upstash Redis provides shared storage for blind reveal and SHAP sessions.
+
+To check a deployment:
+
+1. Open the commit on GitHub and follow its **Vercel** status check, or open the [Vercel Deployments page](https://vercel.com/mess-mate2/qkd-dashboard/deployments).
+2. Find the deployment marked **Production** with the expected commit SHA. **Ready** means the deployment succeeded. Open its build logs if it failed.
+3. Check the public [BB84 health endpoint](https://qkd-dashboard-orpin.vercel.app/healthz) for `model: true` and the [source model endpoint](https://qkd-dashboard-orpin.vercel.app/api/source/meta) for both profiles. To verify Redis-backed sessions, run a blind simulation, then use **Reveal** and **SHAP** in the dashboard.
+
+See the [Git deployment and model update guide](docs/VERCEL.md) for configuration and checkpoint refresh steps.
 
 For a manual CLI upload from a new set of locally trained models:
 
