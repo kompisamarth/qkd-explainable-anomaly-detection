@@ -64,3 +64,5 @@ results/figures/*_smoke.png
 /results/phase3/runs/
 /results/phase3/active.json
 /results/phase3/verification-*.txt
+/.vercel-qkd/
+/.vercel/

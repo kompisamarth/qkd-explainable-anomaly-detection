@@ -5,12 +5,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![IEEE Format](https://img.shields.io/badge/Paper-IEEE%20EL%20Conference-orange.svg)](#)
 
+**Live demo:** [Open the QKD dashboard on Vercel](https://qkd-dashboard-orpin.vercel.app/). Try a BB84 blind test or select either sensor profile in the Source Monitor tab.
+
 A research pipeline and benchmark implementation for explainable, low-latency machine learning detection of stealthy attacks on Quantum Key Distribution. It covers the traditional **BB84** protocol, a **Sending-or-Not-Sending Twin-Field QKD (SNS-TF-QKD)** simulator, and — from Phase 3 — a **source-side side-channel monitor** targeting the transmitter light-injection events that can violate the assumptions of a particular source model.
 
 **Project status:** Phase 1 and Phase 2 complete. The 2026-11 revision replaced the multi-attack
 simulator with a physically calibrated one and re-evaluated everything; see
-[Section 0](#0-current-results-and-one-command-reproduction). Phase 3 now includes a local source-monitor prototype. See [the implementation and reproduction guide](docs/PHASE3.md). The historical plan is in
-[Section 3](#3-phase-3-roadmap).
+[Section 0](#0-current-results-and-one-command-reproduction). Phase 3 includes a source-monitor prototype in the live dashboard. See [the implementation and reproduction guide](docs/PHASE3.md).
 
 > **All results are from simulation** except the files prefixed `real_`, which use benign
 > telemetry from commercial QKD systems (Zenodo 21792844). Read [LIMITATIONS.md](LIMITATIONS.md)
@@ -125,6 +126,23 @@ sensitivity. Returned light is hidden truth, not watchdog telemetry.
 Modulation-clock correlation and hardware-calibrated source bounds are not implemented.
 
 ## 3. Phase 3 implementation and reproduction
+
+### Deploy the dashboard to Vercel
+
+1. Use Python 3.13.13, the [Phase 3 dependency lock](requirements-phase3-lock.txt), Node.js, and a Vercel account. Prepare the BB84 checkpoint and complete a bounded or full Phase 3 run. The [deployment guide](docs/VERCEL.md) includes the commands for a fresh clone.
+2. From the repository root, run the following. Replace the example run path with the path printed by your Phase 3 run.
+
+   ```powershell
+   .\.venv-phase3\Scripts\python.exe scripts/15_prepare_vercel.py 'results/phase3/runs/<run-id>'
+   Set-Location .vercel-qkd
+   npx --yes vercel login
+   npx --yes vercel link
+   ```
+
+3. Connect **Upstash Redis** in the Vercel project. Enable `KV_REST_API_URL` and `KV_REST_API_TOKEN` for Preview and Production. Vercel's marketplace integration supplies these variables. Redis keeps Reveal and SHAP working across server instances. [Upstash setup](https://upstash.com/docs/redis/howto/vercelintegration)
+4. Run `npx --yes vercel deploy` from the prepared folder. On the preview, check `/healthz`, `/api/source/meta`, and the blind reveal and SHAP flows. Run `npx --yes vercel deploy --prod` to publish.
+
+Use the prepared folder for the CLI upload. The GitHub checkout requires locally generated inference checkpoints before it can serve interactive simulations.
 
 Phase 3 contains a stateful source simulator, causal telemetry features, XGBoost,
 an independent benign-only Isolation Forest, and a Source Monitor dashboard tab.

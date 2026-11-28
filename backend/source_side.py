@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from src.simulator.source_side import ROOT, SourceSideSimulator, SCENARIOS, FAMILIES
 from src.data.source_artifacts import validate_run,load_model,digest
 from src.evaluation.source_side import event_metrics
+from backend import hosted_sessions
 
 router=APIRouter(prefix='/api/source',tags=['Source monitor'])
 sessions=OrderedDict(); lock=threading.Lock()
@@ -17,6 +18,8 @@ model_cache={}
 
 
 def active_run():
+    if (ROOT/'hosted_models/manifest.json').is_file():
+        return ROOT/'hosted_models'
     pointer=ROOT/'results/phase3/active.json'
     if not pointer.exists():
         raise ValueError('No active source run. Reproduce with --activate-local.')
@@ -26,11 +29,18 @@ def active_run():
     return directory
 
 
+def monitor_manifest(directory):
+    if directory == ROOT/'hosted_models':
+        from backend.hosted_models import validate_bundle
+        return validate_bundle(directory)
+    return validate_run(directory)
+
+
 def load_monitor(profile):
     try:
         directory=active_run()
         # Check source, runtime and checksums on access; cache only deserialization.
-        manifest=validate_run(directory)
+        manifest=monitor_manifest(directory)
         filename=manifest['deployment'][profile]
         key=(str(directory),filename,digest(directory/filename))
         with lock:
@@ -97,18 +107,30 @@ def simulate(req:SourceRequest):
         middle=m.centres[i]*m.scaler.scale_[i]+m.scaler.center_[i]
         half=m.scales[i]*m.scaler.scale_[i]
         bands[name]=[float(middle-half),float(middle+half)]
-    with lock:
-        sessions[sid]=(s,m)
-        while len(sessions)>32: sessions.popitem(last=False)
+    if hosted_sessions.enabled():
+        hosted_sessions.save("source", sid, json.dumps(dict(
+            profile=req.profile, seed=seed, scenario=scenario, stress=req.stress)))
+    else:
+        with lock:
+            sessions[sid]=(s,m)
+            while len(sessions)>32: sessions.popitem(last=False)
     result=dict(session_id=sid,blind=req.blind,observations=json.loads(s.observations.to_json(orient='records')),
                 prediction=prediction,thresholds=m.thresholds,limits=m.config['engineering_limits'],bands=bands,
                 units={k:v[0] for k,v in m.config['sensors'].items()},
                 provenance=dict(label='SIMULATED DATA',model=filename,assumptions='docs/PHASE3.md'))
-    if not req.blind: result['truth']=reveal(sid)
+    if not req.blind: result['truth']=reveal_session(s,m)
     return result
 
 
 def lookup(sid):
+    if hosted_sessions.enabled():
+        payload=hosted_sessions.read("source",sid)
+        if payload is not None:
+            recipe=json.loads(payload)
+            model,_=load_monitor(recipe['profile'])
+            session=SourceSideSimulator(model.config).simulate(recipe['seed'],9999,0,
+                recipe['scenario'],recipe['profile'],stress=recipe['stress'])
+            return session,model
     with lock: value=sessions.get(sid)
     if value is None: raise HTTPException(404,'Source session expired; rerun simulation')
     return value
@@ -117,6 +139,10 @@ def lookup(sid):
 @router.post('/reveal/{sid}')
 def reveal(sid:str):
     s,m=lookup(sid)
+    return reveal_session(s,m)
+
+
+def reveal_session(s,m):
     return dict(metadata=s.metadata,truth=json.loads(s.truth.to_json(orient='records')),
                 metrics=event_metrics(s,m.predict(s)['alarm']))
 
@@ -135,7 +161,7 @@ def explain(sid:str,index:int=0):
 def benchmarks():
     import pandas as pd
     try:
-        directory=active_run(); validate_run(directory)
+        directory=active_run(); monitor_manifest(directory)
     except (ValueError,KeyError,OSError) as exc:
         raise HTTPException(503,str(exc)) from exc
     p=directory/'summary.csv'

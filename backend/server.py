@@ -44,6 +44,7 @@ from src.features.time_series import (  # noqa: E402
     CausalMultiAttackFeatureExtractor,
 )
 from src.simulator.calibrated import CLASS_KEYS, CLASS_NAMES, CalibratedBB84Simulator  # noqa: E402
+from backend import hosted_sessions
 
 FRONTEND = ROOT_DIR / "frontend"
 METRICS = ROOT_DIR / "results" / "metrics"
@@ -152,7 +153,11 @@ _MAX_SESSIONS = 32
 
 
 def _remember(df: pd.DataFrame) -> str:
-    sid = uuid.uuid4().hex[:12]
+    sid = uuid.uuid4().hex
+    if hosted_sessions.enabled():
+        # Explanations need the computed feature row, not the simulated truth.
+        hosted_sessions.save("bb84-features", sid, df.to_json(orient="split", double_precision=15))
+        return sid
     _sessions[sid] = df
     while len(_sessions) > _MAX_SESSIONS:
         _sessions.popitem(last=False)
@@ -370,10 +375,13 @@ def simulate_blind(req: BlindSimReq):
     df, sp = _simulate(cls, req.channel, req.blocks, onset, seed)
     pkg = _package(df, cls, sp.intensity, onset)
     pkg["blind"] = True
-    with _blind_lock:
-        _blind_truth[pkg['session_id']] = copy.deepcopy(pkg)
-        while len(_blind_truth)>_MAX_SESSIONS:
-            _blind_truth.popitem(last=False)
+    if hosted_sessions.enabled():
+        hosted_sessions.save("bb84-reveal", pkg["session_id"], json.dumps(pkg))
+    else:
+        with _blind_lock:
+            _blind_truth[pkg['session_id']] = copy.deepcopy(pkg)
+            while len(_blind_truth)>_MAX_SESSIONS:
+                _blind_truth.popitem(last=False)
     for key in ('class_id','class_name','class_full','p_eve','onset'):
         pkg.pop(key,None)
     pkg['summary']={k:v for k,v in pkg['summary'].items() if k in ('final_efficiency','final_asymmetry')}
@@ -383,8 +391,12 @@ def simulate_blind(req: BlindSimReq):
 
 @app.post('/api/simulate/reveal/{session_id}')
 def reveal_blind(session_id: str):
-    with _blind_lock:
-        value=_blind_truth.get(session_id)
+    if hosted_sessions.enabled():
+        payload = hosted_sessions.read("bb84-reveal", session_id)
+        value = json.loads(payload) if payload is not None else None
+    else:
+        with _blind_lock:
+            value=_blind_truth.get(session_id)
     if value is None:
         raise HTTPException(404,'Blind session expired; rerun simulation')
     return value
@@ -427,7 +439,12 @@ def simulate_custom(req: CustomSimReq):
 
 @app.get("/api/explain")
 def explain(session_id: str, block: int):
-    df = _sessions.get(session_id)
+    if hosted_sessions.enabled():
+        from io import StringIO
+        payload = hosted_sessions.read("bb84-features", session_id)
+        df = pd.read_json(StringIO(payload), orient="split", precise_float=True) if payload is not None else None
+    else:
+        df = _sessions.get(session_id)
     if df is None:
         raise HTTPException(404, "session expired - re-run the scenario")
     if _model is None:
